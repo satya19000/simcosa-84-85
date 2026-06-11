@@ -55,10 +55,20 @@ function firebaseErrorMessage(code: string): string | null {
 // exact error can be reported. Also logs the full error to the browser console.
 function describeAuthError(err: unknown): string {
   const e = err as { code?: string; message?: string };
-  console.error("[auth] Firebase error:", e?.code, e?.message, err);
+  const host = typeof window !== "undefined" ? window.location.hostname : "";
+  console.error(
+    "[auth] Firebase error:",
+    e?.code,
+    e?.message,
+    "| current hostname:",
+    host,
+    err,
+  );
   const code = e?.code || "unknown";
-  const friendly = firebaseErrorMessage(code);
-  const base = friendly ?? e?.message ?? "Authentication failed.";
+  let base = firebaseErrorMessage(code) ?? e?.message ?? "Authentication failed.";
+  if (code === "auth/unauthorized-domain" && host) {
+    base += ` Current domain is "${host}" — add this exact domain under Firebase → Authentication → Settings → Authorized domains.`;
+  }
   return `${base} (${code})`;
 }
 
