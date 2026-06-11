@@ -31,33 +31,43 @@ export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
   const lastName = claims.last_name ?? null;
   const image = claims.profile_image_url ?? null;
 
-  await query(
-    `INSERT INTO users (id, email, first_name, last_name, profile_image_url, updated_at)
-     VALUES ($1, $2, $3, $4, $5, now())
-     ON CONFLICT (id) DO UPDATE SET
-       email = EXCLUDED.email,
-       first_name = EXCLUDED.first_name,
-       last_name = EXCLUDED.last_name,
-       profile_image_url = EXCLUDED.profile_image_url,
-       updated_at = now()`,
-    [id, email, firstName, lastName, image],
-  );
-
   const fullName =
     [firstName, lastName].filter(Boolean).join(" ").trim() || email || "Batchmate";
 
-  await query(
-    `INSERT INTO profiles (id, full_name, email, photo_url, approved)
-     VALUES ($1, $2, $3, $4, true)
-     ON CONFLICT (id) DO NOTHING`,
-    [id, fullName, email, image],
-  );
+  await withTransaction(async (c) => {
+    // Reclaim the email from any leftover account (e.g. a pre-Firebase Replit
+    // Auth row) that used the same email under a different id, so the unique
+    // email constraint doesn't block this Firebase user. The stale row's
+    // auto-created profile + role cascade-delete and are recreated below.
+    if (email) {
+      await c.query(`DELETE FROM users WHERE email = $1 AND id <> $2`, [email, id]);
+    }
 
-  await query(
-    `INSERT INTO user_roles (user_id, role) VALUES ($1, 'member')
-     ON CONFLICT (user_id, role) DO NOTHING`,
-    [id],
-  );
+    await c.query(
+      `INSERT INTO users (id, email, first_name, last_name, profile_image_url, updated_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (id) DO UPDATE SET
+         email = EXCLUDED.email,
+         first_name = EXCLUDED.first_name,
+         last_name = EXCLUDED.last_name,
+         profile_image_url = EXCLUDED.profile_image_url,
+         updated_at = now()`,
+      [id, email, firstName, lastName, image],
+    );
+
+    await c.query(
+      `INSERT INTO profiles (id, full_name, email, photo_url, approved)
+       VALUES ($1, $2, $3, $4, true)
+       ON CONFLICT (id) DO NOTHING`,
+      [id, fullName, email, image],
+    );
+
+    await c.query(
+      `INSERT INTO user_roles (user_id, role) VALUES ($1, 'member')
+       ON CONFLICT (user_id, role) DO NOTHING`,
+      [id],
+    );
+  });
 }
 
 export async function getProfile(userId: string): Promise<ProfileRow | null> {

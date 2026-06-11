@@ -77,7 +77,7 @@ function Home() {
                 <Users className="h-5 w-5 mr-2" /> Join Community
               </Button>
             </Link>
-            <Link to="/_authenticated/memories">
+            <Link to="/memories">
               <Button size="lg" variant="outline" className="bg-white/15 border-white/50 text-white hover:bg-white/25 font-bold h-14 px-8 text-lg rounded-2xl backdrop-blur-sm">
                 <BookOpen className="h-5 w-5 mr-2" /> View Memories
               </Button>
@@ -207,7 +207,7 @@ function Home() {
                 <h3 className="font-display text-xl font-bold text-gray-900">Batch Celebrations</h3>
                 <p className="text-amber-600 font-semibold text-sm mt-1">Birthdays, Milestones & More</p>
                 <p className="text-gray-500 mt-3 text-sm">We celebrate every moment together — from birthdays to achievements and special milestones.</p>
-                <Link to="/_authenticated/events" className="mt-4 flex items-center gap-2 text-amber-600 font-bold text-sm hover:gap-3 transition-all">
+                <Link to="/events" className="mt-4 flex items-center gap-2 text-amber-600 font-bold text-sm hover:gap-3 transition-all">
                   View Events <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>

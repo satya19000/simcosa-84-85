@@ -85,6 +85,20 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 async function query(text, params) {
   return pool.query(text, params);
 }
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 async function createSession(data) {
   const sid = crypto.randomBytes(32).toString("base64url");
@@ -121,29 +135,34 @@ async function upsertUserFromClaims(claims) {
   const firstName = claims.first_name ?? null;
   const lastName = claims.last_name ?? null;
   const image = claims.profile_image_url ?? null;
-  await query(
-    `INSERT INTO users (id, email, first_name, last_name, profile_image_url, updated_at)
-     VALUES ($1, $2, $3, $4, $5, now())
-     ON CONFLICT (id) DO UPDATE SET
-       email = EXCLUDED.email,
-       first_name = EXCLUDED.first_name,
-       last_name = EXCLUDED.last_name,
-       profile_image_url = EXCLUDED.profile_image_url,
-       updated_at = now()`,
-    [id, email, firstName, lastName, image]
-  );
   const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || email || "Batchmate";
-  await query(
-    `INSERT INTO profiles (id, full_name, email, photo_url, approved)
-     VALUES ($1, $2, $3, $4, true)
-     ON CONFLICT (id) DO NOTHING`,
-    [id, fullName, email, image]
-  );
-  await query(
-    `INSERT INTO user_roles (user_id, role) VALUES ($1, 'member')
-     ON CONFLICT (user_id, role) DO NOTHING`,
-    [id]
-  );
+  await withTransaction(async (c) => {
+    if (email) {
+      await c.query(`DELETE FROM users WHERE email = $1 AND id <> $2`, [email, id]);
+    }
+    await c.query(
+      `INSERT INTO users (id, email, first_name, last_name, profile_image_url, updated_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (id) DO UPDATE SET
+         email = EXCLUDED.email,
+         first_name = EXCLUDED.first_name,
+         last_name = EXCLUDED.last_name,
+         profile_image_url = EXCLUDED.profile_image_url,
+         updated_at = now()`,
+      [id, email, firstName, lastName, image]
+    );
+    await c.query(
+      `INSERT INTO profiles (id, full_name, email, photo_url, approved)
+       VALUES ($1, $2, $3, $4, true)
+       ON CONFLICT (id) DO NOTHING`,
+      [id, fullName, email, image]
+    );
+    await c.query(
+      `INSERT INTO user_roles (user_id, role) VALUES ($1, 'member')
+       ON CONFLICT (user_id, role) DO NOTHING`,
+      [id]
+    );
+  });
 }
 async function getProfile(userId) {
   const res = await query(
@@ -289,7 +308,7 @@ async function serveGallery(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-w9OFQbuQ.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-DLN91ng3.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
