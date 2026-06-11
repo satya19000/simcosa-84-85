@@ -181,7 +181,7 @@ function Home() {
             {/* Real member card */}
             <div className="bg-white rounded-3xl overflow-hidden shadow-md border border-amber-100 hover:shadow-xl hover:-translate-y-1 transition-all">
               <div className="relative h-56">
-                <img src="/assets/member-profile.jpeg" alt="Member" className="w-full h-full object-cover object-top" />
+                <img src="/assets/madhavi-latha.jpeg" alt="Dr. Madhavi Latha" className="w-full h-full object-cover object-top" />
               </div>
               <div className="p-6">
                 <h3 className="font-display text-xl font-bold text-gray-900">Dr. Madhavi Latha</h3>
@@ -247,39 +247,52 @@ function Home() {
               <p className="text-amber-600 font-bold text-sm uppercase tracking-widest mb-2">Moments That Last Forever</p>
               <h2>A Glimpse of Our Journey</h2>
             </div>
-            <Link to="/_authenticated/gallery">
+            <Link to="/gallery">
               <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 font-bold rounded-xl px-6">
                 View Full Gallery <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          {/* Row 1 — large feature + 2 */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
             <div className="col-span-2 sm:col-span-1 row-span-2">
               <div className="rounded-2xl overflow-hidden h-72 sm:h-full shadow-md">
                 <img src="/assets/hero-reunion.jpeg" alt="Yellow shirt reunion" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
               </div>
             </div>
             <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+              <img src="/assets/batch-wedding.jpeg" alt="Batch wedding celebration" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
+            </div>
+            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+              <img src="/assets/batch-formal.jpeg" alt="Batchmates formal" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
+            </div>
+            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+              <img src="/assets/madhavi-latha.jpeg" alt="Dr. Madhavi Latha" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
+            </div>
+            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+              <img src="/assets/batchmates-porch.jpeg" alt="Batchmates" className="w-full h-full object-cover object-center hover:scale-105 transition-transform duration-500" />
+            </div>
+          </div>
+
+          {/* Row 2 — remaining photos */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
               <img src="/assets/simcosa-stage.jpeg" alt="SIMCOSA 85" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
             </div>
             <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
-              <img src="/assets/birthday-event.jpeg" alt="Celebration" className="w-full h-full object-cover object-center hover:scale-105 transition-transform duration-500" />
+              <img src="/assets/family-moment.jpeg" alt="Family moment" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
             </div>
             <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
-              <img src="/assets/member-profile.jpeg" alt="Member" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
+              <img src="/assets/batch-friends.jpeg" alt="Batchmates together" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
             </div>
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center border-2 border-dashed border-amber-300">
-              <Link to="/_authenticated/gallery" className="text-center px-4">
-                <Camera className="h-10 w-10 text-amber-500 mx-auto mb-2" />
-                <p className="text-amber-700 font-bold">View All Photos</p>
-                <p className="text-amber-600 text-sm">1,250+ memories</p>
-              </Link>
+            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+              <img src="/assets/batch-event.jpeg" alt="Batch event" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
             </div>
           </div>
 
           <div className="text-center mt-8">
-            <Link to="/_authenticated/gallery">
+            <Link to="/gallery">
               <Button className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-8 h-12 rounded-2xl shadow-md">
                 <Camera className="h-5 w-5 mr-2" /> View Full Gallery
               </Button>
