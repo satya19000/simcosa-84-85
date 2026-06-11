@@ -49,7 +49,7 @@ function Home() {
       <section className="relative min-h-[92vh] flex items-center justify-center overflow-hidden">
         {/* Background photo */}
         <img
-          src="/assets/hero-reunion.jpeg"
+          src="/assets/simcosa-stage.jpeg"
           alt="SIMCOSA Reunion"
           className="absolute inset-0 w-full h-full object-cover object-center"
         />
@@ -138,7 +138,7 @@ function Home() {
           {/* Stage photo */}
           <div className="relative rounded-3xl overflow-hidden mb-12 shadow-2xl">
             <img
-              src="/assets/simcosa-stage.jpeg"
+              src="/assets/hero-reunion.jpeg"
               alt="SIMCOSA 85 Celebration"
               className="w-full h-72 sm:h-96 object-cover object-top"
             />
