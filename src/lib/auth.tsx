@@ -89,12 +89,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         if (fbUser) {
           const idToken = await fbUser.getIdToken();
-          await fetch("/api/session", {
+          const res = await fetch("/api/session", {
             method: "POST",
             headers: { "content-type": "application/json" },
             credentials: "include",
             body: JSON.stringify({ idToken }),
           });
+          if (!res.ok) {
+            const detail = await res.text().catch(() => "");
+            console.error("[auth] session exchange failed:", res.status, detail);
+            throw new Error(`Session exchange failed (${res.status})`);
+          }
           await load();
         } else {
           await fetch("/api/logout", { method: "POST", credentials: "include" });

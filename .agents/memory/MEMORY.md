@@ -1,3 +1,4 @@
 - [TanStack Start import-protection](tanstack-start-import-protection.md) — client-reachable imports matching `**/server/**` fail `bun run build`; keep server-fn deps out of any `server/` dir.
+- [Firebase auth diagnosis](firebase-auth-diagnosis.md) — vague signup fail? probe identitytoolkit signUp via curl+API key; `CONFIGURATION_NOT_FOUND` = auth not enabled in console, not a code bug.
 - [Vite dev EMFILE from .cache](vite-watcher-emfile.md) — dev crashes with EMFILE after installing a big dep; fix by excluding `.cache`/`.local`/`dist` from `vite.server.watch.ignored`.
 - [Firebase auth + server token verify](firebase-auth-server-verify.md) — client Firebase Auth bridged to Postgres `sid` cookie via /api/session; verify ID tokens with jose+JWKS, no admin SDK.
