@@ -1,0 +1,280 @@
+Completely redesign the SIMCOSA 84–85 Batch alumni portal.
+
+IMPORTANT:
+Do NOT use the current dark navy blue theme.
+Replace it with a modern, bright, elegant, premium alumni-community design.
+
+DESIGN GOALS:
+- Warm
+- Friendly
+- Positive
+- Nostalgic
+- Premium
+- Senior-citizen friendly
+- Large readable fonts
+- Modern cards
+- Soft shadows
+- Rounded corners
+- Mobile-first responsive
+
+COLOR PALETTE:
+Primary:
+#F8FAFC
+#FFFFFF
+#FFF8E7
+#FFF3D6
+#FFE7B3
+
+Accent:
+#F59E0B
+#EAB308
+#F97316
+
+Secondary:
+#10B981
+#06B6D4
+
+Text:
+#1F2937
+#374151
+
+Avoid dark backgrounds except footer.
+
+===================================
+USE THESE UPLOADED IMAGES
+===================================
+
+1. Siddhartha Medical College emblem
+→ Use in navbar and About section.
+
+2. Reunion group photo (yellow shirts)
+→ Use as homepage hero background image.
+
+3. SIMCOSA stage group photo
+→ Use in Memories and Reunion section.
+
+4. Yoga Every Day profile image
+→ Use as sample member profile card.
+
+5. Additional uploaded photos
+→ Create gallery preview section.
+
+Do NOT use stock photos.
+
+===================================
+NEW HOMEPAGE DESIGN
+===================================
+
+SECTION 1 – HERO
+
+Full-width hero.
+
+Large reunion group photo as background.
+
+Overlay:
+
+SIMCOSA 84–85 Batch
+
+Reconnect.
+Celebrate.
+Support.
+
+"Friends for life since Siddhartha Medical College."
+
+Buttons:
+
+Join Community
+View Memories
+
+Show:
+Members count
+Events count
+Photos count
+
+===================================
+SECTION 2 – QUICK FEATURES
+===================================
+
+Large colorful cards:
+
+Members Directory
+Events & Reunions
+Photo Gallery
+Video Gallery
+Memories Wall
+Batch Chat
+Help & Support
+Achievements
+
+Use modern icons.
+
+===================================
+SECTION 3 – REUNION HIGHLIGHTS
+===================================
+
+Use uploaded SIMCOSA stage photo.
+
+Create premium image section.
+
+Title:
+"Celebrating Friendship Since 1985"
+
+Include timeline:
+
+1985 Graduation
+2000 Reunion
+2010 Reunion
+2020 Reunion
+2025 Grand Reunion
+
+===================================
+SECTION 4 – MEMBER SPOTLIGHT
+===================================
+
+Create beautiful member cards.
+
+Use Yoga Every Day profile image as example.
+
+Show:
+
+Photo
+Name
+Batch
+Location
+Profession
+Short memory quote
+
+Card style similar to LinkedIn premium profiles.
+
+===================================
+SECTION 5 – MEMORIES WALL
+===================================
+
+Facebook-style feed.
+
+Members can:
+
+Post text
+Upload photos
+Upload videos
+Comment
+Like
+
+Modern cards.
+
+===================================
+SECTION 6 – PHOTO & VIDEO GALLERY
+===================================
+
+Pinterest-style masonry layout.
+
+Use uploaded photos.
+
+Videos must:
+- Upload to Supabase Storage
+- Play directly on website
+- Have thumbnails
+
+Add filters:
+
+College Days
+Reunions
+Achievements
+Family Moments
+Tributes
+
+===================================
+SECTION 7 – BATCH CHAT ROOM
+===================================
+
+WhatsApp-style design.
+
+Real-time Supabase chat.
+
+Features:
+
+Text messages
+Emoji support
+Online status
+Unread count
+
+===================================
+SECTION 8 – EVENTS
+===================================
+
+Modern event cards.
+
+Upcoming reunion countdown timer.
+
+RSVP support.
+
+===================================
+SECTION 9 – ABOUT SIMCOSA
+===================================
+
+Use Siddhartha Medical College emblem.
+
+Include:
+
+History of Siddhartha Medical College.
+
+History of SIMCOSA 84–85.
+
+Mission:
+
+Reconnect.
+Remember.
+Support each other.
+
+===================================
+FOOTER
+===================================
+
+Elegant footer.
+
+Light background.
+
+Show:
+
+Contact
+Social links
+Batch coordinators
+Copyright
+
+===================================
+TECHNICAL REQUIREMENTS
+===================================
+
+Keep existing Supabase backend.
+
+Create missing tables if required.
+
+Create:
+- member_profiles
+- member_photos
+- member_videos
+- memories
+- comments
+- likes
+- chat_messages
+
+Enable RLS.
+
+Mobile responsive.
+
+Accessibility friendly.
+
+Large fonts.
+
+Fast loading.
+
+Optimize images.
+
+Fix all TypeScript errors.
+
+Run build and ensure production ready.
+
+Finally:
+1. Commit all changes.
+2. Push to GitHub.
+3. Generate deployment instructions.

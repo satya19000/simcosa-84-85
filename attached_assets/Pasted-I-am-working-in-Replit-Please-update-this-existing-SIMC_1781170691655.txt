@@ -1,0 +1,141 @@
+I am working in Replit. Please update this existing SIMCOSA 84–85 Batch alumni website project.
+
+First inspect the full project structure and identify the framework, routes, components, CSS files, Supabase files, and build command.
+
+Goal:
+Redesign the website into a bright, modern, premium alumni community portal.
+
+Important:
+- Do not use the current dark navy design.
+- Use light, bright, warm colors.
+- Use the uploaded real SIMCOSA photos inside the website.
+- Do not use stock photos.
+- Keep Supabase backend if already connected.
+
+Design style:
+- Bright alumni community look
+- Warm cream, white, gold, orange, light green, sky blue
+- Large senior-friendly fonts
+- Rounded cards
+- Soft shadows
+- Mobile responsive
+- Easy buttons
+
+Color palette:
+- Background: #F8FAFC, #FFFFFF, #FFF8E7, #FFF3D6
+- Accent: #F59E0B, #EAB308, #F97316
+- Secondary: #10B981, #06B6D4
+- Text: #1F2937, #374151
+
+Images to use:
+- Siddhartha Medical College logo in navbar and About section
+- Yellow shirt reunion group photo as hero background
+- SIMCOSA stage group photo in Reunion Highlights section
+- Yoga Every Day photo as sample member profile card
+- Other uploaded photos in gallery preview
+
+Homepage sections:
+1. Bright sticky navbar
+   - Logo
+   - SIMCOSA 84–85 Batch
+   - Home, About, Members, Gallery, Videos, Memories, Chat, Events, Login
+
+2. Hero section
+   - Use yellow shirt reunion group photo
+   - Add soft bright overlay
+   - Title: SIMCOSA 84–85 Batch
+   - Subtitle: Reconnect. Celebrate. Support.
+   - Text: Friends for life since Siddhartha Medical College.
+   - Buttons: Join Community, View Memories
+   - Show stats: Members, Events, Photos, Memories
+
+3. Quick feature cards
+   - Members Directory
+   - Events & Reunions
+   - Photo Gallery
+   - Video Gallery
+   - Memories Wall
+   - Batch Chat
+   - Help & Support
+   - Achievements
+
+4. Reunion Highlights
+   - Use SIMCOSA stage group photo
+   - Title: Celebrating Friendship Since 1985
+   - Add timeline: 1985, 2000, 2010, 2020, 2025
+
+5. Member Spotlight
+   - Use Yoga Every Day photo as sample profile
+   - Show photo, name, batch, location, profession, short memory quote
+
+6. Memories Wall preview
+   - Facebook-style cards
+   - Text, photo/video attachment, like, comment
+
+7. Photo and Video Gallery
+   - Masonry/Pinterest layout
+   - Uploaded images
+   - Video cards with HTML5 video player
+   - Filters: College Days, Reunions, Achievements, Family Moments, Tributes
+
+8. Batch Chat Room
+   - WhatsApp-style UI
+   - Supabase Realtime chat if possible
+   - Text messages, emoji, unread count
+
+9. Events
+   - Modern event cards
+   - Upcoming reunion countdown
+   - RSVP buttons
+
+10. About SIMCOSA
+   - Use college logo
+   - History of SIMCOSA 84–85 Batch
+   - Mission: Reconnect, Remember, Support each other
+
+11. Footer
+   - Light elegant footer
+   - Contact
+   - Batch coordinators
+   - Social links
+   - Copyright
+
+Functional requirements:
+- Members can upload personal photos
+- Members can upload videos
+- Videos must play on website
+- Members can add memories
+- Members can comment and like
+- Add group chat page
+- Admin can moderate uploads and chat
+- Keep login/signup with Supabase
+- Create missing Supabase tables:
+  member_profiles
+  member_photos
+  member_videos
+  memories
+  comments
+  likes
+  chat_messages
+  events
+  event_rsvps
+
+Security:
+- Enable RLS policies
+- Public can see only Home and About
+- Approved members can access private sections
+- Users can edit/delete only their own uploads
+- Admin can manage everything
+- Do not expose Supabase service role key
+
+Development steps:
+1. Inspect existing files first.
+2. Modify the actual files in this Replit project.
+3. Add images into public/assets or use existing uploaded assets.
+4. Fix imports and routing.
+5. Run npm install if needed.
+6. Run npm run build.
+7. Fix all errors.
+8. Provide final list of changed files and next deployment steps.
+
+Make the final website look like a premium bright alumni portal, not a dark website.
