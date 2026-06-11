@@ -13,7 +13,7 @@ export const Route = createFileRoute("/auth")({
 
 type Mode = "signin" | "signup" | "reset";
 
-function firebaseErrorMessage(code: string): string {
+function firebaseErrorMessage(code: string): string | null {
   switch (code) {
     case "auth/invalid-email":
       return "That email address doesn't look right.";
@@ -32,13 +32,34 @@ function firebaseErrorMessage(code: string): string {
     case "auth/popup-closed-by-user":
     case "auth/cancelled-popup-request":
       return "Sign-in was cancelled.";
+    case "auth/popup-blocked":
+      return "Your browser blocked the sign-in popup. Allow popups and try again.";
     case "auth/network-request-failed":
       return "Network error. Check your connection and try again.";
     case "auth/operation-not-allowed":
-      return "This sign-in method isn't enabled. Please contact an admin.";
+    case "auth/admin-restricted-operation":
+      return "Email/Password sign-in isn't enabled for this project. An admin must enable it in Firebase Console → Authentication → Sign-in method.";
+    case "auth/configuration-not-found":
+      return "Firebase Authentication isn't set up yet. Enable Email/Password in Firebase Console → Authentication → Sign-in method.";
+    case "auth/unauthorized-domain":
+      return "This domain isn't authorized in Firebase. Add it under Authentication → Settings → Authorized domains.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid":
+      return "The Firebase API key is invalid. Check the VITE_FIREBASE_* configuration.";
     default:
-      return "Something went wrong. Please try again.";
+      return null;
   }
+}
+
+// Always returns a user-facing string and includes the raw Firebase code so the
+// exact error can be reported. Also logs the full error to the browser console.
+function describeAuthError(err: unknown): string {
+  const e = err as { code?: string; message?: string };
+  console.error("[auth] Firebase error:", e?.code, e?.message, err);
+  const code = e?.code || "unknown";
+  const friendly = firebaseErrorMessage(code);
+  const base = friendly ?? e?.message ?? "Authentication failed.";
+  return `${base} (${code})`;
 }
 
 function AuthPage() {
@@ -78,8 +99,7 @@ function AuthPage() {
         setNotice("Password reset email sent. Check your inbox.");
       }
     } catch (err) {
-      const code = (err as { code?: string })?.code ?? "";
-      setError(firebaseErrorMessage(code));
+      setError(describeAuthError(err));
     } finally {
       setBusy(false);
     }
@@ -92,8 +112,7 @@ function AuthPage() {
     try {
       await signInGoogle();
     } catch (err) {
-      const code = (err as { code?: string })?.code ?? "";
-      setError(firebaseErrorMessage(code));
+      setError(describeAuthError(err));
     } finally {
       setGoogleBusy(false);
     }
