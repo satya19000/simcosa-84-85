@@ -18,6 +18,12 @@ export default defineConfig({
       port: 5000,
       strictPort: true,
       allowedHosts: true,
+      watch: {
+        // The file watcher otherwise recursively walks these large dirs (the
+        // bun install cache alone is hundreds of MB), exhausting file descriptors
+        // (EMFILE) on dev startup. None of them contain app source.
+        ignored: ["**/.cache/**", "**/.local/**", "**/dist/**", "**/.git/**"],
+      },
     },
     preview: {
       host: "0.0.0.0",
