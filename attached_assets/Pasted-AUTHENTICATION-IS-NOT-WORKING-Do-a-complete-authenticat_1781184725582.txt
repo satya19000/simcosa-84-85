@@ -1,0 +1,80 @@
+AUTHENTICATION IS NOT WORKING.
+Do a complete authentication audit and fix all login/signup issues.
+STEP 1 - DIAGNOSE Inspect:
+src/integrations/supabase/*
+auth pages
+login page
+signup page
+protected routes
+profile creation logic
+environment variable loading
+Supabase configuration
+Report exact errors found before making changes.
+STEP 2 - ENVIRONMENT CHECK
+Verify these variables exist and are loaded:
+VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY
+If missing:
+show exact location where they should be configured in Replit Secrets
+stop and report
+STEP 3 - SUPABASE CLIENT
+Verify Supabase client initialization.
+Ensure:
+const supabase = createClient( import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY )
+No hardcoded values.
+STEP 4 - SIGNUP FIX
+Implement signup using:
+supabase.auth.signUp()
+Requirements:
+email
+password
+After successful signup:
+Create profile row:
+role = "member" approved = false
+Do NOT block account creation.
+Show success message:
+"Account created successfully. Please wait for admin approval."
+STEP 5 - LOGIN FIX
+Implement:
+supabase.auth.signInWithPassword()
+After login:
+Check profile.approved
+If approved=true:
+redirect to dashboard/home
+If approved=false:
+allow login
+show banner:
+"Your account has been created but is awaiting admin approval."
+Do NOT crash or redirect to blank page.
+STEP 6 - DATABASE AUDIT
+Inspect profiles table.
+Required columns:
+id UUID email TEXT full_name TEXT role TEXT approved BOOLEAN created_at TIMESTAMP
+If missing: generate migration SQL.
+STEP 7 - RLS FIX
+Enable RLS.
+Policies:
+Users can read their own profile. Users can update their own profile. Admins can read/update all profiles.
+Prevent signup failures caused by RLS.
+STEP 8 - ERROR HANDLING
+Display real error messages.
+Examples:
+Invalid email Weak password Email already registered Invalid login credentials Network error
+No silent failures.
+STEP 9 - DEBUGGING
+Check:
+browser console
+network tab
+Supabase responses
+Replit logs
+Find exact failing request.
+STEP 10 - BUILD
+Run:
+npm install npm run build
+Fix ALL TypeScript errors.
+Run app and verify:
+✓ signup works ✓ login works ✓ profile row created ✓ approval logic works ✓ no console errors
+Finally provide:
+Root cause found
+Files changed
+SQL migrations created
+Remaining issues (if any
