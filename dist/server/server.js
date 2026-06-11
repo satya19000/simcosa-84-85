@@ -289,7 +289,7 @@ async function serveGallery(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-Cjxmz0Wu.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-w9OFQbuQ.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }

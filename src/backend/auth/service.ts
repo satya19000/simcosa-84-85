@@ -1,4 +1,4 @@
-import { query } from "../db";
+import { query, withTransaction } from "../db";
 import type { AuthClaims } from "./firebase";
 
 export interface ProfileRow {
