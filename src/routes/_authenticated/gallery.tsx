@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { listGallery, uploadGalleryItem } from "@/api/gallery";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,14 +25,7 @@ function Gallery() {
 
   const { data: items } = useQuery({
     queryKey: ["gallery"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("gallery_items")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => listGallery(),
   });
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -40,24 +33,19 @@ function Gallery() {
     const form = e.currentTarget;
     const fd = new FormData(form);
     const file = fd.get("file") as File;
-    const caption = String(fd.get("caption") || "");
     if (!file || !user) return;
     setUploading(true);
-    const path = `${user.id}/${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("gallery").upload(path, file);
-    if (upErr) { setUploading(false); return toast.error(upErr.message); }
-    const { error: insErr } = await supabase.from("gallery_items").insert({
-      storage_path: path,
-      caption,
-      media_type: file.type.startsWith("video") ? "video" : "image",
-      uploaded_by: user.id,
-    });
-    setUploading(false);
-    if (insErr) return toast.error(insErr.message);
-    toast.success("Uploaded successfully!");
-    form.reset();
-    setShowUpload(false);
-    qc.invalidateQueries({ queryKey: ["gallery"] });
+    try {
+      await uploadGalleryItem({ data: fd });
+      toast.success("Uploaded successfully!");
+      form.reset();
+      setShowUpload(false);
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const images = items?.filter(i => i.media_type === "image") ?? [];
@@ -177,18 +165,14 @@ function Gallery() {
 }
 
 function GalleryItem({ item }: { item: { id: string; storage_path: string; media_type: string; caption: string | null } }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    supabase.storage.from("gallery").createSignedUrl(item.storage_path, 3600).then(({ data }) => setUrl(data?.signedUrl ?? null));
-  }, [item.storage_path]);
+  const url = `/api/gallery/${item.id}`;
   return (
     <div className="rounded-2xl overflow-hidden shadow-sm border border-amber-100 hover:shadow-md transition-shadow group">
       <div className={`${item.media_type === "video" ? "aspect-video" : "aspect-square"} bg-amber-50 flex items-center justify-center`}>
-        {url && (item.media_type === "video"
+        {item.media_type === "video"
           ? <video src={url} controls className="w-full h-full object-cover" />
           : <img src={url} alt={item.caption ?? "Photo"} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
-        )}
-        {!url && <div className="animate-pulse bg-amber-100 w-full h-full" />}
+        }
       </div>
       {item.caption && <p className="p-3 text-sm text-gray-600 font-medium">{item.caption}</p>}
     </div>

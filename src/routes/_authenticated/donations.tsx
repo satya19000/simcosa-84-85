@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { listDonations, listExpenses } from "@/api/donations";
 import { format } from "date-fns";
 import { Heart, TrendingUp, TrendingDown, Wallet, IndianRupee } from "lucide-react";
 
@@ -12,11 +12,11 @@ export const Route = createFileRoute("/_authenticated/donations")({
 function Donations() {
   const { data: donations } = useQuery({
     queryKey: ["donations"],
-    queryFn: async () => (await supabase.from("donations").select("*").order("donated_on", { ascending: false })).data ?? [],
+    queryFn: () => listDonations(),
   });
   const { data: expenses } = useQuery({
     queryKey: ["expenses"],
-    queryFn: async () => (await supabase.from("expenses").select("*").order("spent_on", { ascending: false })).data ?? [],
+    queryFn: () => listExpenses(),
   });
 
   const totalIn = donations?.reduce((s, d) => s + Number(d.amount), 0) ?? 0;

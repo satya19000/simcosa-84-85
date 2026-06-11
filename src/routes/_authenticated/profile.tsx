@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { updateMyProfile } from "@/api/profile";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,12 +36,16 @@ function ProfilePage() {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const { error } = await supabase.from("profiles").update(form).eq("id", user!.id);
-    setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Profile updated! 🎉");
-    await refresh();
-    router.navigate({ to: "/directory" });
+    try {
+      await updateMyProfile({ data: form });
+      toast.success("Profile updated! 🎉");
+      await refresh();
+      router.navigate({ to: "/directory" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update profile");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

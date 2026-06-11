@@ -1,6 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  adminListMembers, adminSetApproved,
+  adminListEvents, adminCreateEvent, adminDeleteEvent,
+  adminListAnnouncements, adminCreateAnnouncement, adminDeleteAnnouncement,
+  adminListDonations, adminCreateDonation,
+  adminListExpenses, adminCreateExpense,
+  adminListSupport, adminResolveSupport,
+} from "@/api/admin";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,13 +58,16 @@ function MembersTab() {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["admin-members"],
-    queryFn: async () => (await supabase.from("profiles").select("*").order("created_at", { ascending: false })).data ?? [],
+    queryFn: () => adminListMembers(),
   });
   const toggle = async (id: string, approved: boolean) => {
-    const { error } = await supabase.from("profiles").update({ approved }).eq("id", id);
-    if (error) return toast.error(error.message);
-    toast.success(approved ? "Approved" : "Revoked");
-    qc.invalidateQueries({ queryKey: ["admin-members"] });
+    try {
+      await adminSetApproved({ data: { id, approved } });
+      toast.success(approved ? "Approved" : "Revoked");
+      qc.invalidateQueries({ queryKey: ["admin-members"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   };
   return (
     <div className="space-y-3">
@@ -78,25 +88,28 @@ function MembersTab() {
 
 function EventsTab() {
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["admin-events"], queryFn: async () => (await supabase.from("events").select("*").order("event_date", { ascending: false })).data ?? [] });
+  const { data } = useQuery({ queryKey: ["admin-events"], queryFn: () => adminListEvents() });
   const create = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
-    const { error } = await supabase.from("events").insert({
-      title: String(fd.get("title")),
-      description: String(fd.get("description") || ""),
-      location: String(fd.get("location") || ""),
-      event_date: new Date(String(fd.get("event_date"))).toISOString(),
-    });
-    if (error) return toast.error(error.message);
-    form.reset();
-    toast.success("Event created");
-    qc.invalidateQueries({ queryKey: ["admin-events"] });
-    qc.invalidateQueries({ queryKey: ["events"] });
+    try {
+      await adminCreateEvent({ data: {
+        title: String(fd.get("title")),
+        description: String(fd.get("description") || ""),
+        location: String(fd.get("location") || ""),
+        event_date: new Date(String(fd.get("event_date"))).toISOString(),
+      } });
+      form.reset();
+      toast.success("Event created");
+      qc.invalidateQueries({ queryKey: ["admin-events"] });
+      qc.invalidateQueries({ queryKey: ["events"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   };
   const del = async (id: string) => {
-    await supabase.from("events").delete().eq("id", id);
+    await adminDeleteEvent({ data: { id } });
     qc.invalidateQueries({ queryKey: ["admin-events"] });
     qc.invalidateQueries({ queryKey: ["events"] });
   };
@@ -124,23 +137,26 @@ function EventsTab() {
 function AnnouncementsTab() {
   const qc = useQueryClient();
   const [kind, setKind] = useState("notice");
-  const { data } = useQuery({ queryKey: ["admin-announcements"], queryFn: async () => (await supabase.from("announcements").select("*").order("created_at", { ascending: false })).data ?? [] });
+  const { data } = useQuery({ queryKey: ["admin-announcements"], queryFn: () => adminListAnnouncements() });
   const create = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
-    const { error } = await supabase.from("announcements").insert({
-      kind: kind as "birthday" | "achievement" | "condolence" | "notice",
-      title: String(fd.get("title")),
-      body: String(fd.get("body") || ""),
-    });
-    if (error) return toast.error(error.message);
-    form.reset();
-    qc.invalidateQueries({ queryKey: ["admin-announcements"] });
-    qc.invalidateQueries({ queryKey: ["announcements"] });
+    try {
+      await adminCreateAnnouncement({ data: {
+        kind: kind as "birthday" | "achievement" | "condolence" | "notice",
+        title: String(fd.get("title")),
+        body: String(fd.get("body") || ""),
+      } });
+      form.reset();
+      qc.invalidateQueries({ queryKey: ["admin-announcements"] });
+      qc.invalidateQueries({ queryKey: ["announcements"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   };
   const del = async (id: string) => {
-    await supabase.from("announcements").delete().eq("id", id);
+    await adminDeleteAnnouncement({ data: { id } });
     qc.invalidateQueries({ queryKey: ["admin-announcements"] });
     qc.invalidateQueries({ queryKey: ["announcements"] });
   };
@@ -176,20 +192,23 @@ function AnnouncementsTab() {
 
 function DonationsTab() {
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["admin-donations"], queryFn: async () => (await supabase.from("donations").select("*").order("donated_on", { ascending: false })).data ?? [] });
+  const { data } = useQuery({ queryKey: ["admin-donations"], queryFn: () => adminListDonations() });
   const create = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
-    const { error } = await supabase.from("donations").insert({
-      donor_name: String(fd.get("donor_name")),
-      amount: Number(fd.get("amount")),
-      purpose: String(fd.get("purpose") || ""),
-    });
-    if (error) return toast.error(error.message);
-    form.reset();
-    qc.invalidateQueries({ queryKey: ["admin-donations"] });
-    qc.invalidateQueries({ queryKey: ["donations"] });
+    try {
+      await adminCreateDonation({ data: {
+        donor_name: String(fd.get("donor_name")),
+        amount: Number(fd.get("amount")),
+        purpose: String(fd.get("purpose") || ""),
+      } });
+      form.reset();
+      qc.invalidateQueries({ queryKey: ["admin-donations"] });
+      qc.invalidateQueries({ queryKey: ["donations"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   };
   return (
     <div>
@@ -213,20 +232,23 @@ function DonationsTab() {
 
 function ExpensesTab() {
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["admin-expenses"], queryFn: async () => (await supabase.from("expenses").select("*").order("spent_on", { ascending: false })).data ?? [] });
+  const { data } = useQuery({ queryKey: ["admin-expenses"], queryFn: () => adminListExpenses() });
   const create = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
-    const { error } = await supabase.from("expenses").insert({
-      description: String(fd.get("description")),
-      amount: Number(fd.get("amount")),
-      category: String(fd.get("category") || ""),
-    });
-    if (error) return toast.error(error.message);
-    form.reset();
-    qc.invalidateQueries({ queryKey: ["admin-expenses"] });
-    qc.invalidateQueries({ queryKey: ["expenses"] });
+    try {
+      await adminCreateExpense({ data: {
+        description: String(fd.get("description")),
+        amount: Number(fd.get("amount")),
+        category: String(fd.get("category") || ""),
+      } });
+      form.reset();
+      qc.invalidateQueries({ queryKey: ["admin-expenses"] });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   };
   return (
     <div>
@@ -250,9 +272,9 @@ function ExpensesTab() {
 
 function SupportTab() {
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["admin-support"], queryFn: async () => (await supabase.from("support_requests").select("*, profiles(full_name, phone)").order("created_at", { ascending: false })).data ?? [] });
+  const { data } = useQuery({ queryKey: ["admin-support"], queryFn: () => adminListSupport() });
   const resolve = async (id: string) => {
-    await supabase.from("support_requests").update({ status: "resolved" }).eq("id", id);
+    await adminResolveSupport({ data: { id } });
     qc.invalidateQueries({ queryKey: ["admin-support"] });
   };
   return (

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { listMemories, postMemory, toggleLike as toggleLikeFn, addComment } from "@/api/memories";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,14 +29,7 @@ function Memories() {
 
   const { data: memories } = useQuery({
     queryKey: ["memories"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("memories")
-        .select("*, profiles(full_name), memory_likes(user_id), memory_comments(id, body, user_id, created_at, profiles(full_name))")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => listMemories(),
   });
 
   const onPost = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -44,25 +37,25 @@ function Memories() {
     const form = e.currentTarget;
     const fd = new FormData(form);
     setPosting(true);
-    const { error } = await supabase.from("memories").insert({
-      user_id: user!.id,
-      title: String(fd.get("title") || ""),
-      body: String(fd.get("body")),
-    });
-    setPosting(false);
-    if (error) return toast.error(error.message);
-    form.reset();
-    toast.success("Your memory has been shared! 💛");
-    qc.invalidateQueries({ queryKey: ["memories"] });
+    try {
+      await postMemory({ data: { title: String(fd.get("title") || ""), body: String(fd.get("body")) } });
+      form.reset();
+      toast.success("Your memory has been shared! 💛");
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to post");
+    } finally {
+      setPosting(false);
+    }
   };
 
   const toggleLike = async (mid: string, liked: boolean) => {
-    if (liked) {
-      await supabase.from("memory_likes").delete().eq("memory_id", mid).eq("user_id", user!.id);
-    } else {
-      await supabase.from("memory_likes").insert({ memory_id: mid, user_id: user!.id });
+    try {
+      await toggleLikeFn({ data: { memoryId: mid, liked } });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
     }
-    qc.invalidateQueries({ queryKey: ["memories"] });
   };
 
   return (
@@ -178,11 +171,15 @@ function Comments({
   const add = async () => {
     if (!text.trim()) return;
     setSending(true);
-    const { error } = await supabase.from("memory_comments").insert({ memory_id: memoryId, user_id: user!.id, body: text });
-    setSending(false);
-    if (error) return toast.error(error.message);
-    setText("");
-    qc.invalidateQueries({ queryKey: ["memories"] });
+    try {
+      await addComment({ data: { memoryId, body: text } });
+      setText("");
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (

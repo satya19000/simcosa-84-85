@@ -1,0 +1,1 @@
+- [TanStack Start import-protection](tanstack-start-import-protection.md) — client-reachable imports matching `**/server/**` fail `bun run build`; keep server-fn deps out of any `server/` dir.

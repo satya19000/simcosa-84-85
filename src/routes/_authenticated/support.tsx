@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { listMySupport, createSupport } from "@/api/support";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,11 +39,7 @@ function Support() {
   const { data: mine } = useQuery({
     queryKey: ["my-support", user?.id],
     enabled: !!user,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("support_requests").select("*").eq("user_id", user!.id).order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => listMySupport(),
   });
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -51,17 +47,22 @@ function Support() {
     const form = e.currentTarget;
     const fd = new FormData(form);
     setSending(true);
-    const { error } = await supabase.from("support_requests").insert({
-      user_id: user!.id,
-      category: category as "medical" | "financial" | "emotional" | "family" | "other",
-      subject: String(fd.get("subject")),
-      message: String(fd.get("message")),
-    });
-    setSending(false);
-    if (error) return toast.error(error.message);
-    toast.success("Sent! Admins will reach out to you privately. 💛");
-    form.reset();
-    qc.invalidateQueries({ queryKey: ["my-support"] });
+    try {
+      await createSupport({
+        data: {
+          category: category as "medical" | "financial" | "emotional" | "family" | "other",
+          subject: String(fd.get("subject")),
+          message: String(fd.get("message")),
+        },
+      });
+      toast.success("Sent! Admins will reach out to you privately. 💛");
+      form.reset();
+      qc.invalidateQueries({ queryKey: ["my-support"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (

@@ -20,14 +20,14 @@ const memberLinks = [
 ];
 
 export function SiteHeader() {
-  const { user, isApproved, isAdmin, signOut } = useAuth();
+  const { user, isAdmin, signOut } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
   const links = [
     ...publicLinks,
-    ...(isApproved ? memberLinks.map(l => ({ to: l.to, label: l.label })) : []),
-    ...(isAdmin ? [{ to: "/_authenticated/admin", label: "Admin" }] : []),
+    ...(user ? memberLinks.map(l => ({ to: l.to, label: l.label })) : []),
+    ...(isAdmin ? [{ to: "/admin", label: "Admin" }] : []),
   ];
 
   const onSignOut = async () => {

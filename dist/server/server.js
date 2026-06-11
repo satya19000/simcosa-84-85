@@ -1,3 +1,6 @@
+import * as client from "openid-client";
+import crypto from "node:crypto";
+import pg from "pg";
 let lastCapturedError;
 const TTL_MS = 5e3;
 function record(error) {
@@ -50,10 +53,294 @@ function renderErrorPage() {
   </body>
 </html>`;
 }
+const ISSUER_URL = process.env.ISSUER_URL ?? "https://replit.com/oidc";
+if (!process.env.REPL_ID) {
+  throw new Error("REPL_ID must be set for Replit Auth");
+}
+const SCOPES = "openid email profile offline_access";
+let configPromise;
+function getOidcConfig() {
+  if (!configPromise) {
+    configPromise = client.discovery(new URL(ISSUER_URL), process.env.REPL_ID);
+  }
+  return configPromise;
+}
+const SECRET = process.env.SESSION_SECRET;
+if (!SECRET || SECRET.length < 16) {
+  throw new Error(
+    "SESSION_SECRET environment variable must be set to a strong value (>= 16 chars) for cookie signing."
+  );
+}
+function parseCookies(header) {
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    const k = part.slice(0, idx).trim();
+    const v = part.slice(idx + 1).trim();
+    if (k) out[k] = decodeURIComponent(v);
+  }
+  return out;
+}
+function serializeCookie(name, value, opts = {}) {
+  const parts = [`${name}=${encodeURIComponent(value)}`];
+  parts.push(`Path=${opts.path ?? "/"}`);
+  if (opts.maxAge != null) parts.push(`Max-Age=${Math.floor(opts.maxAge)}`);
+  if (opts.httpOnly !== false) parts.push("HttpOnly");
+  if (opts.secure !== false) parts.push("Secure");
+  parts.push(`SameSite=${opts.sameSite ?? "Lax"}`);
+  return parts.join("; ");
+}
+function clearCookie(name) {
+  return `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+}
+function sign(value) {
+  const mac = crypto.createHmac("sha256", SECRET).update(value).digest("base64url");
+  return `${value}.${mac}`;
+}
+function unsign(signed) {
+  if (!signed) return null;
+  const idx = signed.lastIndexOf(".");
+  if (idx === -1) return null;
+  const value = signed.slice(0, idx);
+  const mac = signed.slice(idx + 1);
+  const expected = crypto.createHmac("sha256", SECRET).update(value).digest("base64url");
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  return value;
+}
+const { Pool } = pg;
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
+}
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+async function query(text, params) {
+  return pool.query(text, params);
+}
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+async function createSession(data) {
+  const sid = crypto.randomBytes(32).toString("base64url");
+  const expire = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3);
+  await query("INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2, $3)", [
+    sid,
+    JSON.stringify(data),
+    expire
+  ]);
+  return sid;
+}
+async function getSession(sid) {
+  if (!sid) return null;
+  const res = await query(
+    "SELECT sess, expire FROM sessions WHERE sid = $1",
+    [sid]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  if (new Date(row.expire).getTime() < Date.now()) {
+    await destroySession(sid);
+    return null;
+  }
+  return row.sess;
+}
+async function destroySession(sid) {
+  if (!sid) return;
+  await query("DELETE FROM sessions WHERE sid = $1", [sid]);
+}
+const SESSION_COOKIE = "sid";
+async function upsertUserFromClaims(claims) {
+  const id = claims.sub;
+  const email = claims.email ?? null;
+  const firstName = claims.first_name ?? null;
+  const lastName = claims.last_name ?? null;
+  const image = claims.profile_image_url ?? null;
+  await query(
+    `INSERT INTO users (id, email, first_name, last_name, profile_image_url, updated_at)
+     VALUES ($1, $2, $3, $4, $5, now())
+     ON CONFLICT (id) DO UPDATE SET
+       email = EXCLUDED.email,
+       first_name = EXCLUDED.first_name,
+       last_name = EXCLUDED.last_name,
+       profile_image_url = EXCLUDED.profile_image_url,
+       updated_at = now()`,
+    [id, email, firstName, lastName, image]
+  );
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || email || "Batchmate";
+  await query(
+    `INSERT INTO profiles (id, full_name, email, photo_url, approved)
+     VALUES ($1, $2, $3, $4, true)
+     ON CONFLICT (id) DO NOTHING`,
+    [id, fullName, email, image]
+  );
+  await query(
+    `INSERT INTO user_roles (user_id, role) VALUES ($1, 'member')
+     ON CONFLICT (user_id, role) DO NOTHING`,
+    [id]
+  );
+}
+async function getProfile(userId) {
+  const res = await query(
+    `SELECT id, full_name, photo_url, phone, whatsapp, email, location, profession, bio, approved
+     FROM profiles WHERE id = $1`,
+    [userId]
+  );
+  return res.rows[0] ?? null;
+}
+async function isAdmin(userId) {
+  const res = await query(
+    `SELECT 1 FROM user_roles WHERE user_id = $1 AND role = 'admin' LIMIT 1`,
+    [userId]
+  );
+  return res.rowCount > 0;
+}
+const TX_COOKIE = "oidc_tx";
+function originFromRequest(request) {
+  const url = new URL(request.url);
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.host;
+  const proto = request.headers.get("x-forwarded-proto") ?? "https";
+  return `${proto}://${host}`;
+}
+function redirect(location, headers = []) {
+  const h = new Headers({ Location: location });
+  for (const c of headers) h.append("Set-Cookie", c);
+  return new Response(null, { status: 302, headers: h });
+}
+async function handleLogin(request) {
+  const config = await getOidcConfig();
+  const redirectUri = `${originFromRequest(request)}/api/callback`;
+  const codeVerifier = client.randomPKCECodeVerifier();
+  const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
+  const state = client.randomState();
+  const nonce = client.randomNonce();
+  const authUrl = client.buildAuthorizationUrl(config, {
+    redirect_uri: redirectUri,
+    scope: SCOPES,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    state,
+    nonce,
+    prompt: "login consent"
+  });
+  const tx = sign(JSON.stringify({ codeVerifier, state, nonce, redirectUri }));
+  const txCookie = serializeCookie(TX_COOKIE, tx, { maxAge: 600, sameSite: "Lax" });
+  return redirect(authUrl.href, [txCookie]);
+}
+async function handleCallback(request) {
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const raw = unsign(cookies[TX_COOKIE]);
+  if (!raw) return redirect("/auth?error=session", [clearCookie(TX_COOKIE)]);
+  let tx;
+  try {
+    tx = JSON.parse(raw);
+  } catch {
+    return redirect("/auth?error=session", [clearCookie(TX_COOKIE)]);
+  }
+  try {
+    const config = await getOidcConfig();
+    const currentUrl = new URL(request.url);
+    const publicUrl = new URL(currentUrl.pathname + currentUrl.search, originFromRequest(request));
+    const tokens = await client.authorizationCodeGrant(config, publicUrl, {
+      pkceCodeVerifier: tx.codeVerifier,
+      expectedState: tx.state,
+      expectedNonce: tx.nonce,
+      idTokenExpected: true
+    });
+    const claims = tokens.claims();
+    await upsertUserFromClaims(claims);
+    const accessExpiresAt = tokens.expires_in ? Math.floor(Date.now() / 1e3) + tokens.expires_in : null;
+    const sid = await createSession({
+      userId: claims.sub,
+      claims,
+      refresh_token: tokens.refresh_token ?? null,
+      access_expires_at: accessExpiresAt
+    });
+    const sessionCookie = serializeCookie(SESSION_COOKIE, sid, {
+      maxAge: SESSION_TTL_SECONDS,
+      sameSite: "Lax"
+    });
+    return redirect("/", [sessionCookie, clearCookie(TX_COOKIE)]);
+  } catch (err) {
+    console.error("[auth] callback error", err);
+    return redirect("/auth?error=login", [clearCookie(TX_COOKIE)]);
+  }
+}
+async function handleLogout(request) {
+  const cookies = parseCookies(request.headers.get("cookie"));
+  await destroySession(cookies[SESSION_COOKIE]);
+  let endSession = "/";
+  try {
+    const config = await getOidcConfig();
+    endSession = client.buildEndSessionUrl(config, {
+      client_id: process.env.REPL_ID,
+      post_logout_redirect_uri: originFromRequest(request)
+    }).href;
+  } catch {
+    endSession = "/";
+  }
+  return redirect(endSession, [clearCookie(SESSION_COOKIE)]);
+}
+async function handleAuthUser(request) {
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const session = await getSession(cookies[SESSION_COOKIE]);
+  if (!session) {
+    return Response.json({ authenticated: false });
+  }
+  const [profile, admin] = await Promise.all([
+    getProfile(session.userId),
+    isAdmin(session.userId)
+  ]);
+  return Response.json({
+    authenticated: true,
+    user: {
+      id: session.userId,
+      email: session.claims.email ?? null,
+      first_name: session.claims.first_name ?? null,
+      last_name: session.claims.last_name ?? null,
+      profile_image_url: session.claims.profile_image_url ?? null
+    },
+    profile,
+    isAdmin: admin
+  });
+}
+const ROUTES = {
+  "/api/login": handleLogin,
+  "/api/callback": handleCallback,
+  "/api/logout": handleLogout,
+  "/api/auth/user": handleAuthUser
+};
+async function handleAuthRoute(request) {
+  const { pathname } = new URL(request.url);
+  const handler = ROUTES[pathname];
+  if (!handler) return null;
+  return handler(request);
+}
+async function serveGallery(request) {
+  const { pathname } = new URL(request.url);
+  const match = pathname.match(/^\/api\/gallery\/([^/]+)$/);
+  if (!match) return null;
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const session = await getSession(cookies[SESSION_COOKIE]);
+  if (!session) return new Response("Unauthorized", { status: 401 });
+  const id = decodeURIComponent(match[1]);
+  const res = await query(
+    `SELECT data, mime FROM gallery_items WHERE id = $1`,
+    [id]
+  );
+  const row = res.rows[0];
+  if (!row || !row.data) return new Response("Not found", { status: 404 });
+  return new Response(new Uint8Array(row.data), {
+    status: 200,
+    headers: {
+      "Content-Type": row.mime ?? "application/octet-stream",
+      "Cache-Control": "private, max-age=3600"
+    }
+  });
+}
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-BSRfFrcq.js").then(
+    serverEntryPromise = import("./assets/server-Bkw0E9e7.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
@@ -76,6 +363,10 @@ async function normalizeCatastrophicSsrResponse(response) {
 const server = {
   async fetch(request, env, ctx) {
     try {
+      const authResponse = await handleAuthRoute(request);
+      if (authResponse) return authResponse;
+      const galleryResponse = await serveGallery(request);
+      if (galleryResponse) return galleryResponse;
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
@@ -89,6 +380,12 @@ const server = {
   }
 };
 export {
+  SESSION_COOKIE as S,
+  getProfile as a,
   server as default,
+  getSession as g,
+  isAdmin as i,
+  parseCookies as p,
+  query as q,
   renderErrorPage as r
 };

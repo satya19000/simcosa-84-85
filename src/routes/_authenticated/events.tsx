@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { listEvents, listMyRsvps, listRsvpCounts, setRsvp as setRsvpFn } from "@/api/events";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Calendar, MapPin, Users, Clock, CheckCircle, HelpCircle, XCircle } from "lucide-react";
@@ -51,47 +51,30 @@ function Events() {
 
   const { data: events } = useQuery({
     queryKey: ["events"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("events").select("*").order("event_date", { ascending: true });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => listEvents(),
   });
 
   const { data: rsvps } = useQuery({
     queryKey: ["my-rsvps", user?.id],
     enabled: !!user,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("event_rsvps").select("*").eq("user_id", user!.id);
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => listMyRsvps(),
   });
 
   const { data: counts } = useQuery({
     queryKey: ["rsvp-counts"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("event_rsvps").select("event_id,status");
-      if (error) throw error;
-      const c: Record<string, Record<Status, number>> = {};
-      for (const r of data) {
-        c[r.event_id] ??= { attending: 0, maybe: 0, not_attending: 0 };
-        c[r.event_id][r.status as Status]++;
-      }
-      return c;
-    },
+    queryFn: () => listRsvpCounts(),
   });
 
   const setRsvp = async (eventId: string, status: Status) => {
     if (!user) return;
-    const { error } = await supabase.from("event_rsvps").upsert(
-      { event_id: eventId, user_id: user.id, status },
-      { onConflict: "event_id,user_id" }
-    );
-    if (error) return toast.error(error.message);
-    toast.success(status === "attending" ? "Great! You're attending 🎉" : "RSVP updated");
-    qc.invalidateQueries({ queryKey: ["my-rsvps"] });
-    qc.invalidateQueries({ queryKey: ["rsvp-counts"] });
+    try {
+      await setRsvpFn({ data: { event_id: eventId, status } });
+      toast.success(status === "attending" ? "Great! You're attending 🎉" : "RSVP updated");
+      qc.invalidateQueries({ queryKey: ["my-rsvps"] });
+      qc.invalidateQueries({ queryKey: ["rsvp-counts"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to RSVP");
+    }
   };
 
   const getMy = (eid: string) => rsvps?.find((r) => r.event_id === eid)?.status as Status | undefined;

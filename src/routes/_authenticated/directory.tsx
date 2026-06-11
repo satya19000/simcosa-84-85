@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { Mail, Phone, MessageCircle, MapPin, Briefcase, Search } from "lucide-react";
+import { listMembers } from "@/api/members";
+import { Mail, Phone, MessageCircle, MapPin, Briefcase, Search, Users } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 
@@ -15,15 +15,7 @@ function Directory() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["directory"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("approved", true)
-        .order("full_name");
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => listMembers(),
   });
 
   const filtered = data?.filter(m =>

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { listAnnouncements } from "@/api/announcements";
 import { format } from "date-fns";
 import { Cake, Award, Heart, Megaphone, Bell } from "lucide-react";
 
@@ -20,11 +20,7 @@ const kindColors = {
 function Announcements() {
   const { data } = useQuery({
     queryKey: ["announcements"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("announcements").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => listAnnouncements(),
   });
 
   return (
