@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Heart, MessageCircle, BookOpen, Send } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 
 export const Route = createFileRoute("/_authenticated/memories")({
   head: () => ({ meta: [{ title: "Memories Wall — SIMCOSA 84–85" }] }),
@@ -26,11 +27,19 @@ function Memories() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [posting, setPosting] = useState(false);
+  const [lbIndex, setLbIndex] = useState<number | null>(null);
 
   const { data: memories } = useQuery({
     queryKey: ["memories"],
     queryFn: () => listMemories(),
   });
+
+  const photoMemories = (memories ?? []).filter((m) => !!m.image_url);
+  const lightboxImages: LightboxImage[] = photoMemories.map((m) => ({
+    src: m.image_url as string,
+    alt: m.title ?? m.profiles?.full_name ?? "Memory photo",
+    caption: m.title ?? (m.profiles?.full_name ? `Shared by ${m.profiles.full_name}` : undefined),
+  }));
 
   const onPost = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -122,6 +131,20 @@ function Memories() {
                   </div>
                   {m.title && <h3 className="font-display text-xl font-bold text-gray-900 mb-2">{m.title}</h3>}
                   <p className="text-gray-700 leading-relaxed whitespace-pre-line">{m.body}</p>
+                  {m.image_url && (
+                    <button
+                      type="button"
+                      onClick={() => setLbIndex(photoMemories.findIndex((pm) => pm.id === m.id))}
+                      className="mt-4 block w-full overflow-hidden rounded-xl border border-amber-100 cursor-zoom-in"
+                    >
+                      <img
+                        src={m.image_url}
+                        alt={m.title ?? "Memory photo"}
+                        loading="lazy"
+                        className="w-full max-h-96 object-cover hover:scale-[1.02] transition-transform duration-300"
+                      />
+                    </button>
+                  )}
                 </div>
 
                 {/* Like/comment bar */}
@@ -145,6 +168,13 @@ function Memories() {
           })}
         </div>
       </div>
+
+      <ImageLightbox
+        images={lightboxImages}
+        index={lbIndex}
+        onClose={() => setLbIndex(null)}
+        onIndexChange={setLbIndex}
+      />
     </div>
   );
 }

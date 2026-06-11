@@ -4,6 +4,7 @@ import { listMembers } from "@/api/members";
 import { Mail, Phone, MessageCircle, MapPin, Briefcase, Search, Users } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 
 export const Route = createFileRoute("/_authenticated/directory")({
   head: () => ({ meta: [{ title: "Members Directory — SIMCOSA 84–85" }] }),
@@ -12,6 +13,7 @@ export const Route = createFileRoute("/_authenticated/directory")({
 
 function Directory() {
   const [search, setSearch] = useState("");
+  const [lbIndex, setLbIndex] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["directory"],
@@ -23,6 +25,14 @@ function Directory() {
     (m.location ?? "").toLowerCase().includes(search.toLowerCase()) ||
     (m.profession ?? "").toLowerCase().includes(search.toLowerCase())
   );
+
+  const memberPhotos: LightboxImage[] = (filtered ?? [])
+    .filter(m => !!m.photo_url)
+    .map(m => ({
+      src: m.photo_url as string,
+      alt: m.full_name,
+      caption: [m.full_name, m.profession].filter(Boolean).join(" · "),
+    }));
 
   const AVATAR_COLORS = [
     "bg-amber-100 text-amber-700", "bg-emerald-100 text-emerald-700",
@@ -64,7 +74,14 @@ function Directory() {
             <div key={m.id} className="bg-white rounded-2xl p-5 shadow-sm border border-amber-100 hover:shadow-md hover:-translate-y-0.5 transition-all">
               <div className="flex items-center gap-4 mb-4">
                 {m.photo_url ? (
-                  <img src={m.photo_url} alt={m.full_name} className="h-16 w-16 rounded-full object-cover ring-2 ring-amber-200" />
+                  <button
+                    type="button"
+                    onClick={() => setLbIndex(memberPhotos.findIndex(p => p.src === m.photo_url))}
+                    aria-label={`Enlarge photo of ${m.full_name}`}
+                    className="shrink-0 rounded-full cursor-zoom-in"
+                  >
+                    <img src={m.photo_url} alt={m.full_name} className="h-16 w-16 rounded-full object-cover ring-2 ring-amber-200" />
+                  </button>
                 ) : (
                   <div className={`h-16 w-16 rounded-full flex items-center justify-center font-display text-2xl font-bold shrink-0 ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`}>
                     {m.full_name.charAt(0)}
@@ -117,6 +134,13 @@ function Directory() {
           </div>
         )}
       </div>
+
+      <ImageLightbox
+        images={memberPhotos}
+        index={lbIndex}
+        onClose={() => setLbIndex(null)}
+        onIndexChange={setLbIndex}
+      />
     </div>
   );
 }

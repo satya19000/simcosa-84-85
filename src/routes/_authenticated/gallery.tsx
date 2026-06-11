@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Camera, Upload, Film, Image } from "lucide-react";
 import { toast } from "sonner";
+import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 
 export const Route = createFileRoute("/_authenticated/gallery")({
   head: () => ({ meta: [{ title: "Photo & Video Gallery — SIMCOSA 84–85" }] }),
@@ -16,12 +17,20 @@ export const Route = createFileRoute("/_authenticated/gallery")({
 
 const FILTERS = ["All", "College Days", "Reunions", "Achievements", "Family Moments", "Tributes"];
 
+const SAMPLE_IMAGES: LightboxImage[] = [
+  { src: "/assets/hero-reunion.jpeg", caption: "Reunion — Yellow Shirt Day" },
+  { src: "/assets/simcosa-stage.jpeg", caption: "SIMCOSA 85 — Celebrating Friendship" },
+  { src: "/assets/birthday-event.jpeg", caption: "Batch Birthday Celebration" },
+  { src: "/assets/member-profile.jpeg", caption: "Our Batchmate" },
+];
+
 function Gallery() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [activeFilter, setActiveFilter] = useState("All");
   const [showUpload, setShowUpload] = useState(false);
+  const [lb, setLb] = useState<{ images: LightboxImage[]; index: number } | null>(null);
 
   const { data: items } = useQuery({
     queryKey: ["gallery"],
@@ -50,6 +59,12 @@ function Gallery() {
 
   const images = items?.filter(i => i.media_type === "image") ?? [];
   const videos = items?.filter(i => i.media_type === "video") ?? [];
+
+  const uploadedImages: LightboxImage[] = images.map(it => ({
+    src: `/api/gallery/${it.id}`,
+    alt: it.caption ?? "Photo",
+    caption: it.caption ?? undefined,
+  }));
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
@@ -112,18 +127,18 @@ function Gallery() {
               <span className="text-xs text-gray-400">(upload your own photos above)</span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {[
-                { src: "/assets/hero-reunion.jpeg", caption: "Reunion — Yellow Shirt Day" },
-                { src: "/assets/simcosa-stage.jpeg", caption: "SIMCOSA 85 — Celebrating Friendship" },
-                { src: "/assets/birthday-event.jpeg", caption: "Batch Birthday Celebration" },
-                { src: "/assets/member-profile.jpeg", caption: "Our Batchmate" },
-              ].map(img => (
-                <div key={img.src} className="rounded-2xl overflow-hidden shadow-sm border border-amber-100 hover:shadow-md transition-shadow group">
+              {SAMPLE_IMAGES.map((img, idx) => (
+                <button
+                  type="button"
+                  key={img.src}
+                  onClick={() => setLb({ images: SAMPLE_IMAGES, index: idx })}
+                  className="text-left rounded-2xl overflow-hidden shadow-sm border border-amber-100 hover:shadow-md transition-shadow group cursor-zoom-in"
+                >
                   <div className="aspect-square">
                     <img src={img.src} alt={img.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
                   </div>
                   <p className="p-3 text-sm text-gray-600 font-medium">{img.caption}</p>
-                </div>
+                </button>
               ))}
             </div>
             <div className="mt-8 text-center text-gray-400">
@@ -142,7 +157,13 @@ function Gallery() {
               <h3 className="font-display font-bold text-gray-700">Photos ({images.length})</h3>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {images.map(it => <GalleryItem key={it.id} item={it} />)}
+              {images.map((it, idx) => (
+                <GalleryItem
+                  key={it.id}
+                  item={it}
+                  onOpen={() => setLb({ images: uploadedImages, index: idx })}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -160,18 +181,35 @@ function Gallery() {
           </div>
         )}
       </div>
+
+      <ImageLightbox
+        images={lb?.images ?? []}
+        index={lb?.index ?? null}
+        onClose={() => setLb(null)}
+        onIndexChange={(i) => setLb((s) => (s ? { ...s, index: i } : s))}
+      />
     </div>
   );
 }
 
-function GalleryItem({ item }: { item: { id: string; storage_path: string; media_type: string; caption: string | null } }) {
+function GalleryItem({ item, onOpen }: { item: { id: string; storage_path: string; media_type: string; caption: string | null }; onOpen?: () => void }) {
   const url = `/api/gallery/${item.id}`;
+  const isVideo = item.media_type === "video";
   return (
     <div className="rounded-2xl overflow-hidden shadow-sm border border-amber-100 hover:shadow-md transition-shadow group">
-      <div className={`${item.media_type === "video" ? "aspect-video" : "aspect-square"} bg-amber-50 flex items-center justify-center`}>
-        {item.media_type === "video"
+      <div className={`${isVideo ? "aspect-video" : "aspect-square"} bg-amber-50 flex items-center justify-center`}>
+        {isVideo
           ? <video src={url} controls className="w-full h-full object-cover" />
-          : <img src={url} alt={item.caption ?? "Photo"} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+          : (
+            <button
+              type="button"
+              onClick={onOpen}
+              aria-label={`Enlarge ${item.caption ?? "photo"}`}
+              className="block w-full h-full cursor-zoom-in"
+            >
+              <img src={url} alt={item.caption ?? "Photo"} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+            </button>
+          )
         }
       </div>
       {item.caption && <p className="p-3 text-sm text-gray-600 font-medium">{item.caption}</p>}

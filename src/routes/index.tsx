@@ -4,6 +4,8 @@ import {
   HelpCircle, Trophy, ArrowRight, Star, MapPin, Briefcase, Quote
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -33,6 +35,22 @@ const FEATURES = [
   { icon: Trophy, label: "Achievements", desc: "Celebrate our batch's proud moments.", color: "bg-yellow-50 text-yellow-600", link: "/about" },
 ];
 
+const GALLERY_PREVIEW: LightboxImage[] = [
+  { src: "/assets/hero-reunion.jpeg", alt: "Yellow shirt reunion", caption: "Reunion — Yellow Shirt Day" },
+  { src: "/assets/batch-wedding.jpeg", alt: "Batch wedding celebration", caption: "Batch Wedding Celebration" },
+  { src: "/assets/batch-formal.jpeg", alt: "Batchmates formal", caption: "Batchmates — Formal Gathering" },
+  { src: "/assets/madhavi-latha.jpeg", alt: "Dr. Madhavi Latha", caption: "Dr. Madhavi Latha" },
+  { src: "/assets/batchmates-porch.jpeg", alt: "Batchmates", caption: "Batchmates Together" },
+  { src: "/assets/simcosa-stage.jpeg", alt: "SIMCOSA 85", caption: "SIMCOSA 85 — Celebrating Friendship" },
+  { src: "/assets/family-moment.jpeg", alt: "Family moment", caption: "A Family Moment" },
+  { src: "/assets/batch-friends.jpeg", alt: "Batchmates together", caption: "Friends for Life" },
+  { src: "/assets/batch-event.jpeg", alt: "Batch event", caption: "Batch Event" },
+];
+
+const REUNION_PHOTO: LightboxImage[] = [
+  { src: "/assets/hero-reunion.jpeg", alt: "SIMCOSA 85 Celebration", caption: "SIMCOSA 85 — Celebrating Friendship" },
+];
+
 const TIMELINE = [
   { year: "1985", label: "Graduation", desc: "Our proud batch graduated from Govt. Siddhartha Medical College" },
   { year: "2000", label: "Reunion", desc: "First major reunion — 15 years of friendship celebrated" },
@@ -42,6 +60,7 @@ const TIMELINE = [
 ];
 
 function Home() {
+  const [lb, setLb] = useState<{ images: LightboxImage[]; index: number } | null>(null);
   return (
     <div className="overflow-x-hidden">
 
@@ -136,18 +155,23 @@ function Home() {
           </div>
 
           {/* Stage photo */}
-          <div className="relative rounded-3xl overflow-hidden mb-12 shadow-2xl">
+          <button
+            type="button"
+            onClick={() => setLb({ images: REUNION_PHOTO, index: 0 })}
+            aria-label="Enlarge reunion photo"
+            className="relative block w-full text-left rounded-3xl overflow-hidden mb-12 shadow-2xl cursor-zoom-in"
+          >
             <img
               src="/assets/hero-reunion.jpeg"
               alt="SIMCOSA 85 Celebration"
               className="w-full h-72 sm:h-96 object-cover object-top"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/70 via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/70 via-transparent to-transparent pointer-events-none" />
             <div className="absolute bottom-6 left-6 text-white">
               <p className="font-display text-2xl font-bold">SIMCOSA 85 — Celebrating Friendship</p>
               <p className="text-white/80 mt-1">Our latest grand gathering</p>
             </div>
-          </div>
+          </button>
 
           {/* Timeline */}
           <div className="relative">
@@ -234,38 +258,38 @@ function Home() {
           {/* Row 1 — large feature + 2 */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
             <div className="col-span-2 sm:col-span-1 row-span-2">
-              <div className="rounded-2xl overflow-hidden h-72 sm:h-full shadow-md">
+              <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 0 })} className="block w-full rounded-2xl overflow-hidden h-72 sm:h-full shadow-md cursor-zoom-in">
                 <img src="/assets/hero-reunion.jpeg" alt="Yellow shirt reunion" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
-              </div>
+              </button>
             </div>
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+            <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 1 })} className="block w-full rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md cursor-zoom-in">
               <img src="/assets/batch-wedding.jpeg" alt="Batch wedding celebration" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
-            </div>
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+            </button>
+            <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 2 })} className="block w-full rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md cursor-zoom-in">
               <img src="/assets/batch-formal.jpeg" alt="Batchmates formal" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
-            </div>
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+            </button>
+            <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 3 })} className="block w-full rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md cursor-zoom-in">
               <img src="/assets/madhavi-latha.jpeg" alt="Dr. Madhavi Latha" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
-            </div>
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+            </button>
+            <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 4 })} className="block w-full rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md cursor-zoom-in">
               <img src="/assets/batchmates-porch.jpeg" alt="Batchmates" className="w-full h-full object-cover object-center hover:scale-105 transition-transform duration-500" />
-            </div>
+            </button>
           </div>
 
           {/* Row 2 — remaining photos */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+            <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 5 })} className="block w-full rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md cursor-zoom-in">
               <img src="/assets/simcosa-stage.jpeg" alt="SIMCOSA 85" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
-            </div>
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+            </button>
+            <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 6 })} className="block w-full rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md cursor-zoom-in">
               <img src="/assets/family-moment.jpeg" alt="Family moment" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
-            </div>
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+            </button>
+            <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 7 })} className="block w-full rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md cursor-zoom-in">
               <img src="/assets/batch-friends.jpeg" alt="Batchmates together" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
-            </div>
-            <div className="rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md">
+            </button>
+            <button type="button" onClick={() => setLb({ images: GALLERY_PREVIEW, index: 8 })} className="block w-full rounded-2xl overflow-hidden h-36 sm:h-44 shadow-md cursor-zoom-in">
               <img src="/assets/batch-event.jpeg" alt="Batch event" className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500" />
-            </div>
+            </button>
           </div>
 
           <div className="text-center mt-8">
@@ -342,6 +366,13 @@ function Home() {
           </div>
         </div>
       </section>
+
+      <ImageLightbox
+        images={lb?.images ?? []}
+        index={lb?.index ?? null}
+        onClose={() => setLb(null)}
+        onIndexChange={(i) => setLb((s) => (s ? { ...s, index: i } : s))}
+      />
     </div>
   );
 }
