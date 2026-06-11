@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { User, Phone, MapPin, Briefcase, MessageCircle, Save } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/profile")({
-  head: () => ({ meta: [{ title: "My Profile" }] }),
+  head: () => ({ meta: [{ title: "My Profile — SIMCOSA 84–85" }] }),
   component: ProfilePage,
 });
 
@@ -38,28 +39,87 @@ function ProfilePage() {
     const { error } = await supabase.from("profiles").update(form).eq("id", user!.id);
     setSaving(false);
     if (error) return toast.error(error.message);
-    toast.success("Profile updated");
+    toast.success("Profile updated! 🎉");
     await refresh();
     router.navigate({ to: "/directory" });
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-4 sm:px-6 py-10">
-      <h1>My Profile</h1>
-      <p className="text-muted-foreground mt-2">Keep your details up to date so classmates can reach you.</p>
-      <form onSubmit={save} className="mt-6 space-y-4 rounded-xl border border-border bg-card p-6">
-        <div><Label>Full name</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required className="h-12 text-base" /></div>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="h-12 text-base" /></div>
-          <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} placeholder="+91…" className="h-12 text-base" /></div>
+    <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
+      {/* Header */}
+      <div className="bg-white border-b border-amber-100 px-4 py-10">
+        <div className="mx-auto max-w-2xl">
+          <p className="text-amber-600 font-bold text-sm uppercase tracking-widest mb-2">Account</p>
+          <h1>My Profile</h1>
+          <p className="text-gray-500 mt-2 text-lg">Keep your details up to date so classmates can find and connect with you.</p>
         </div>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div><Label>City / Location</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="h-12 text-base" /></div>
-          <div><Label>Profession</Label><Input value={form.profession} onChange={(e) => setForm({ ...form, profession: e.target.value })} className="h-12 text-base" /></div>
+      </div>
+
+      <div className="mx-auto max-w-2xl px-4 sm:px-6 py-8">
+        {/* Avatar */}
+        <div className="bg-white rounded-2xl border border-amber-100 shadow-sm p-6 mb-6 flex items-center gap-4">
+          <div className="h-20 w-20 rounded-full bg-amber-100 flex items-center justify-center font-display text-3xl font-bold text-amber-700 shrink-0">
+            {form.full_name.charAt(0) || user?.email?.charAt(0).toUpperCase() || "M"}
+          </div>
+          <div>
+            <p className="font-bold text-gray-900 text-xl">{form.full_name || "Your Name"}</p>
+            <p className="text-gray-400 text-sm">{user?.email}</p>
+            <p className="text-amber-600 text-sm font-semibold mt-0.5">SIMCOSA 1984–85 Batch</p>
+          </div>
         </div>
-        <div><Label>About you</Label><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} rows={4} className="text-base" /></div>
-        <Button type="submit" disabled={saving} className="h-12 px-6">{saving ? "Saving…" : "Save profile"}</Button>
-      </form>
+
+        <form onSubmit={save} className="bg-white rounded-2xl border border-amber-100 shadow-sm p-6 space-y-5">
+          <div>
+            <Label className="font-semibold text-gray-700 flex items-center gap-2"><User className="h-4 w-4 text-amber-500" />Full name *</Label>
+            <Input
+              value={form.full_name}
+              onChange={e => setForm({ ...form, full_name: e.target.value })}
+              required
+              placeholder="Dr. Your Name"
+              className="h-12 text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl"
+            />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="font-semibold text-gray-700 flex items-center gap-2"><Phone className="h-4 w-4 text-amber-500" />Phone</Label>
+              <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+91 98765 43210" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+            </div>
+            <div>
+              <Label className="font-semibold text-gray-700 flex items-center gap-2"><MessageCircle className="h-4 w-4 text-emerald-500" />WhatsApp</Label>
+              <Input value={form.whatsapp} onChange={e => setForm({ ...form, whatsapp: e.target.value })} placeholder="+91 98765 43210" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="font-semibold text-gray-700 flex items-center gap-2"><MapPin className="h-4 w-4 text-amber-500" />City / Location</Label>
+              <Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Vijayawada, AP" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+            </div>
+            <div>
+              <Label className="font-semibold text-gray-700 flex items-center gap-2"><Briefcase className="h-4 w-4 text-amber-500" />Profession / Speciality</Label>
+              <Input value={form.profession} onChange={e => setForm({ ...form, profession: e.target.value })} placeholder="Cardiologist, Hyderabad" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+            </div>
+          </div>
+
+          <div>
+            <Label className="font-semibold text-gray-700">About you</Label>
+            <Textarea
+              value={form.bio}
+              onChange={e => setForm({ ...form, bio: e.target.value })}
+              rows={4}
+              placeholder="A short bio — your practice, city, family, hobbies… anything you'd like batchmates to know."
+              className="text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={saving} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl flex items-center gap-2">
+              <Save className="h-4 w-4" /> {saving ? "Saving…" : "Save Profile"}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
