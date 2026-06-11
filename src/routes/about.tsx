@@ -20,7 +20,7 @@ function About() {
         <div className="mx-auto max-w-4xl text-center">
           <div className="flex items-center justify-center mb-6">
             <img
-              src="/assets/simcosa-logo.png"
+              src="/assets/college-logo.png"
               alt="SIMCOSA Logo"
               className="h-24 w-24 rounded-full object-cover ring-4 ring-amber-400 shadow-xl"
             />

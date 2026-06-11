@@ -182,10 +182,9 @@ function Home() {
             <div className="bg-white rounded-3xl overflow-hidden shadow-md border border-amber-100 hover:shadow-xl hover:-translate-y-1 transition-all">
               <div className="relative h-56">
                 <img src="/assets/member-profile.jpeg" alt="Member" className="w-full h-full object-cover object-top" />
-                <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">Active Member</div>
               </div>
               <div className="p-6">
-                <h3 className="font-display text-xl font-bold text-gray-900">Dr. Padma Reddy</h3>
+                <h3 className="font-display text-xl font-bold text-gray-900">Dr. Madhavi Latha</h3>
                 <p className="text-amber-600 font-semibold text-sm mt-1">SIMCOSA Batch 1984–85</p>
                 <div className="mt-3 space-y-1.5 text-sm text-gray-600">
                   <p className="flex items-center gap-2"><MapPin className="h-4 w-4 text-amber-500" /> Vijayawada, Andhra Pradesh</p>

@@ -43,7 +43,7 @@ export function SiteHeader() {
           {/* Logo & Brand */}
           <Link to="/" className="flex items-center gap-3 min-w-0 shrink-0">
             <img
-              src="/assets/simcosa-logo.png"
+              src="/assets/college-logo.png"
               alt="SIMCOSA"
               className="h-10 w-10 rounded-full object-cover ring-2 ring-amber-400 ring-offset-1"
             />
@@ -135,7 +135,7 @@ export function SiteFooter() {
           {/* Brand */}
           <div>
             <div className="flex items-center gap-3 mb-4">
-              <img src="/assets/simcosa-logo.png" alt="SIMCOSA" className="h-12 w-12 rounded-full object-cover ring-2 ring-amber-400" />
+              <img src="/assets/college-logo.png" alt="SIMCOSA" className="h-12 w-12 rounded-full object-cover ring-2 ring-amber-400" />
               <div>
                 <p className="font-display text-lg font-bold text-white leading-none">SIMCOSA 84–85</p>
                 <p className="text-xs text-amber-400 mt-0.5">Govt. Siddhartha Medical College</p>
