@@ -179,29 +179,6 @@ function Home() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Real member card */}
-            <div className="bg-white rounded-3xl overflow-hidden shadow-md border border-amber-100 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="relative h-56">
-                <img src="/assets/madhavi-latha.jpeg" alt="Dr. Madhavi Latha" className="w-full h-full object-cover object-top" />
-              </div>
-              <div className="p-6">
-                <h3 className="font-display text-xl font-bold text-gray-900">Dr. Madhavi Latha</h3>
-                <p className="text-amber-600 font-semibold text-sm mt-1">SIMCOSA Batch 1984–85</p>
-                <div className="mt-3 space-y-1.5 text-sm text-gray-600">
-                  <p className="flex items-center gap-2"><MapPin className="h-4 w-4 text-amber-500" /> Vijayawada, Andhra Pradesh</p>
-                  <p className="flex items-center gap-2"><Briefcase className="h-4 w-4 text-amber-500" /> Senior Gynaecologist</p>
-                </div>
-                <div className="mt-4 bg-amber-50 rounded-xl p-3 border-l-4 border-amber-400">
-                  <Quote className="h-4 w-4 text-amber-400 mb-1" />
-                  <p className="text-gray-600 text-sm italic leading-relaxed">"The friendships we made in Siddhartha are the most precious gifts of our lives."</p>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  {['Yoga Enthusiast', 'Community Leader'].map(tag => (
-                    <span key={tag} className="bg-amber-100 text-amber-700 text-xs font-semibold px-3 py-1 rounded-full">{tag}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             {/* Placeholder cards with photos */}
             <div className="bg-white rounded-3xl overflow-hidden shadow-md border border-amber-100 hover:shadow-xl hover:-translate-y-1 transition-all">
               <div className="relative h-56">
