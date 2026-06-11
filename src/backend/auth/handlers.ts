@@ -1,11 +1,4 @@
-import { client, getOidcConfig, SCOPES, type OidcClaims } from "./oidc";
-import {
-  parseCookies,
-  serializeCookie,
-  clearCookie,
-  sign,
-  unsign,
-} from "./cookies";
+import { parseCookies, serializeCookie, clearCookie } from "./cookies";
 import {
   createSession,
   destroySession,
@@ -14,117 +7,53 @@ import {
   SESSION_TTL_SECONDS,
 } from "./session";
 import { upsertUserFromClaims, getProfile, isAdmin } from "./service";
+import { verifyFirebaseToken, type AuthClaims } from "./firebase";
 
-const TX_COOKIE = "oidc_tx";
-
-function originFromRequest(request: Request): string {
-  const url = new URL(request.url);
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.host;
-  const proto = request.headers.get("x-forwarded-proto") ?? "https";
-  return `${proto}://${host}`;
+function json(body: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "application/json");
+  return new Response(JSON.stringify(body), { ...init, headers });
 }
 
-function redirect(location: string, headers: string[] = []): Response {
-  const h = new Headers({ Location: location });
-  for (const c of headers) h.append("Set-Cookie", c);
-  return new Response(null, { status: 302, headers: h });
-}
+// POST /api/session — exchange a verified Firebase ID token for a server session.
+// New users are upserted with a member profile (approved=true) automatically.
+export async function handleSession(request: Request): Promise<Response> {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
 
-// GET /api/login — begin OIDC login
-export async function handleLogin(request: Request): Promise<Response> {
-  const config = await getOidcConfig();
-  const redirectUri = `${originFromRequest(request)}/api/callback`;
+  let idToken: string | undefined;
+  try {
+    const body = (await request.json()) as { idToken?: string };
+    idToken = body?.idToken;
+  } catch {
+    return json({ error: "Invalid request body" }, { status: 400 });
+  }
+  if (!idToken) return json({ error: "Missing idToken" }, { status: 400 });
 
-  const codeVerifier = client.randomPKCECodeVerifier();
-  const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
-  const state = client.randomState();
-  const nonce = client.randomNonce();
+  let claims: AuthClaims;
+  try {
+    claims = await verifyFirebaseToken(idToken);
+  } catch (err) {
+    console.error("[auth] token verification failed", err);
+    return json({ error: "Invalid token" }, { status: 401 });
+  }
 
-  const authUrl = client.buildAuthorizationUrl(config, {
-    redirect_uri: redirectUri,
-    scope: SCOPES,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-    state,
-    nonce,
-    prompt: "login consent",
+  await upsertUserFromClaims(claims);
+  const sid = await createSession({ userId: claims.sub, claims });
+  const cookie = serializeCookie(SESSION_COOKIE, sid, {
+    maxAge: SESSION_TTL_SECONDS,
+    sameSite: "Lax",
   });
 
-  const tx = sign(JSON.stringify({ codeVerifier, state, nonce, redirectUri }));
-  const txCookie = serializeCookie(TX_COOKIE, tx, { maxAge: 600, sameSite: "Lax" });
-
-  return redirect(authUrl.href, [txCookie]);
+  return json({ ok: true }, { headers: { "Set-Cookie": cookie } });
 }
 
-// GET /api/callback — finish OIDC login
-export async function handleCallback(request: Request): Promise<Response> {
-  const cookies = parseCookies(request.headers.get("cookie"));
-  const raw = unsign(cookies[TX_COOKIE]);
-  if (!raw) return redirect("/auth?error=session", [clearCookie(TX_COOKIE)]);
-
-  let tx: { codeVerifier: string; state: string; nonce: string; redirectUri: string };
-  try {
-    tx = JSON.parse(raw);
-  } catch {
-    return redirect("/auth?error=session", [clearCookie(TX_COOKIE)]);
-  }
-
-  try {
-    const config = await getOidcConfig();
-    const currentUrl = new URL(request.url);
-    // Rebuild the URL on the public origin so it matches the registered redirect_uri.
-    const publicUrl = new URL(currentUrl.pathname + currentUrl.search, originFromRequest(request));
-
-    const tokens = await client.authorizationCodeGrant(config, publicUrl, {
-      pkceCodeVerifier: tx.codeVerifier,
-      expectedState: tx.state,
-      expectedNonce: tx.nonce,
-      idTokenExpected: true,
-    });
-
-    const claims = tokens.claims() as unknown as OidcClaims;
-    await upsertUserFromClaims(claims);
-
-    const accessExpiresAt = tokens.expires_in
-      ? Math.floor(Date.now() / 1000) + tokens.expires_in
-      : null;
-
-    const sid = await createSession({
-      userId: claims.sub,
-      claims,
-      refresh_token: tokens.refresh_token ?? null,
-      access_expires_at: accessExpiresAt,
-    });
-
-    const sessionCookie = serializeCookie(SESSION_COOKIE, sid, {
-      maxAge: SESSION_TTL_SECONDS,
-      sameSite: "Lax",
-    });
-
-    return redirect("/", [sessionCookie, clearCookie(TX_COOKIE)]);
-  } catch (err) {
-    console.error("[auth] callback error", err);
-    return redirect("/auth?error=login", [clearCookie(TX_COOKIE)]);
-  }
-}
-
-// GET /api/logout — destroy session and end Replit session
+// POST /api/logout — destroy the server session and clear the cookie.
 export async function handleLogout(request: Request): Promise<Response> {
   const cookies = parseCookies(request.headers.get("cookie"));
   await destroySession(cookies[SESSION_COOKIE]);
-
-  let endSession = "/";
-  try {
-    const config = await getOidcConfig();
-    endSession = client.buildEndSessionUrl(config, {
-      client_id: process.env.REPL_ID!,
-      post_logout_redirect_uri: originFromRequest(request),
-    }).href;
-  } catch {
-    endSession = "/";
-  }
-
-  return redirect(endSession, [clearCookie(SESSION_COOKIE)]);
+  return json({ ok: true }, { headers: { "Set-Cookie": clearCookie(SESSION_COOKIE) } });
 }
 
 // GET /api/auth/user — current user as JSON
@@ -132,13 +61,13 @@ export async function handleAuthUser(request: Request): Promise<Response> {
   const cookies = parseCookies(request.headers.get("cookie"));
   const session = await getSession(cookies[SESSION_COOKIE]);
   if (!session) {
-    return Response.json({ authenticated: false });
+    return json({ authenticated: false });
   }
   const [profile, admin] = await Promise.all([
     getProfile(session.userId),
     isAdmin(session.userId),
   ]);
-  return Response.json({
+  return json({
     authenticated: true,
     user: {
       id: session.userId,
@@ -153,8 +82,7 @@ export async function handleAuthUser(request: Request): Promise<Response> {
 }
 
 const ROUTES: Record<string, (req: Request) => Promise<Response>> = {
-  "/api/login": handleLogin,
-  "/api/callback": handleCallback,
+  "/api/session": handleSession,
   "/api/logout": handleLogout,
   "/api/auth/user": handleAuthUser,
 };

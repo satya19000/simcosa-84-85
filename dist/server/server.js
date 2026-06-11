@@ -1,6 +1,6 @@
-import * as client from "openid-client";
 import crypto from "node:crypto";
 import pg from "pg";
+import { jwtVerify, createRemoteJWKSet } from "jose";
 let lastCapturedError;
 const TTL_MS = 5e3;
 function record(error) {
@@ -53,24 +53,6 @@ function renderErrorPage() {
   </body>
 </html>`;
 }
-const ISSUER_URL = process.env.ISSUER_URL ?? "https://replit.com/oidc";
-if (!process.env.REPL_ID) {
-  throw new Error("REPL_ID must be set for Replit Auth");
-}
-const SCOPES = "openid email profile offline_access";
-let configPromise;
-function getOidcConfig() {
-  if (!configPromise) {
-    configPromise = client.discovery(new URL(ISSUER_URL), process.env.REPL_ID);
-  }
-  return configPromise;
-}
-const SECRET = process.env.SESSION_SECRET;
-if (!SECRET || SECRET.length < 16) {
-  throw new Error(
-    "SESSION_SECRET environment variable must be set to a strong value (>= 16 chars) for cookie signing."
-  );
-}
 function parseCookies(header) {
   const out = {};
   if (!header) return out;
@@ -94,22 +76,6 @@ function serializeCookie(name, value, opts = {}) {
 }
 function clearCookie(name) {
   return `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
-}
-function sign(value) {
-  const mac = crypto.createHmac("sha256", SECRET).update(value).digest("base64url");
-  return `${value}.${mac}`;
-}
-function unsign(signed) {
-  if (!signed) return null;
-  const idx = signed.lastIndexOf(".");
-  if (idx === -1) return null;
-  const value = signed.slice(0, idx);
-  const mac = signed.slice(idx + 1);
-  const expected = crypto.createHmac("sha256", SECRET).update(value).digest("base64url");
-  const a = Buffer.from(mac);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
-  return value;
 }
 const { Pool } = pg;
 if (!process.env.DATABASE_URL) {
@@ -194,103 +160,87 @@ async function isAdmin(userId) {
   );
   return res.rowCount > 0;
 }
-const TX_COOKIE = "oidc_tx";
-function originFromRequest(request) {
-  const url = new URL(request.url);
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.host;
-  const proto = request.headers.get("x-forwarded-proto") ?? "https";
-  return `${proto}://${host}`;
-}
-function redirect(location, headers = []) {
-  const h = new Headers({ Location: location });
-  for (const c of headers) h.append("Set-Cookie", c);
-  return new Response(null, { status: 302, headers: h });
-}
-async function handleLogin(request) {
-  const config = await getOidcConfig();
-  const redirectUri = `${originFromRequest(request)}/api/callback`;
-  const codeVerifier = client.randomPKCECodeVerifier();
-  const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
-  const state = client.randomState();
-  const nonce = client.randomNonce();
-  const authUrl = client.buildAuthorizationUrl(config, {
-    redirect_uri: redirectUri,
-    scope: SCOPES,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-    state,
-    nonce,
-    prompt: "login consent"
+const PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID;
+const JWKS = createRemoteJWKSet(
+  new URL(
+    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+  )
+);
+async function verifyFirebaseToken(idToken) {
+  if (!PROJECT_ID) {
+    throw new Error("VITE_FIREBASE_PROJECT_ID must be set to verify Firebase tokens");
+  }
+  const { payload } = await jwtVerify(idToken, JWKS, {
+    issuer: `https://securetoken.google.com/${PROJECT_ID}`,
+    audience: PROJECT_ID
   });
-  const tx = sign(JSON.stringify({ codeVerifier, state, nonce, redirectUri }));
-  const txCookie = serializeCookie(TX_COOKIE, tx, { maxAge: 600, sameSite: "Lax" });
-  return redirect(authUrl.href, [txCookie]);
+  const p = payload;
+  const uid = p.sub || p.user_id;
+  if (!uid) throw new Error("Invalid Firebase token: missing subject");
+  const name = (p.name ?? "").trim();
+  let firstName = null;
+  let lastName = null;
+  if (name) {
+    const parts = name.split(/\s+/);
+    firstName = parts.shift() ?? null;
+    lastName = parts.length ? parts.join(" ") : null;
+  }
+  return {
+    sub: uid,
+    email: p.email ?? null,
+    first_name: firstName,
+    last_name: lastName,
+    profile_image_url: p.picture ?? null
+  };
 }
-async function handleCallback(request) {
-  const cookies = parseCookies(request.headers.get("cookie"));
-  const raw = unsign(cookies[TX_COOKIE]);
-  if (!raw) return redirect("/auth?error=session", [clearCookie(TX_COOKIE)]);
-  let tx;
+function json(body, init = {}) {
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "application/json");
+  return new Response(JSON.stringify(body), { ...init, headers });
+}
+async function handleSession(request) {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+  let idToken;
   try {
-    tx = JSON.parse(raw);
+    const body = await request.json();
+    idToken = body?.idToken;
   } catch {
-    return redirect("/auth?error=session", [clearCookie(TX_COOKIE)]);
+    return json({ error: "Invalid request body" }, { status: 400 });
   }
+  if (!idToken) return json({ error: "Missing idToken" }, { status: 400 });
+  let claims;
   try {
-    const config = await getOidcConfig();
-    const currentUrl = new URL(request.url);
-    const publicUrl = new URL(currentUrl.pathname + currentUrl.search, originFromRequest(request));
-    const tokens = await client.authorizationCodeGrant(config, publicUrl, {
-      pkceCodeVerifier: tx.codeVerifier,
-      expectedState: tx.state,
-      expectedNonce: tx.nonce,
-      idTokenExpected: true
-    });
-    const claims = tokens.claims();
-    await upsertUserFromClaims(claims);
-    const accessExpiresAt = tokens.expires_in ? Math.floor(Date.now() / 1e3) + tokens.expires_in : null;
-    const sid = await createSession({
-      userId: claims.sub,
-      claims,
-      refresh_token: tokens.refresh_token ?? null,
-      access_expires_at: accessExpiresAt
-    });
-    const sessionCookie = serializeCookie(SESSION_COOKIE, sid, {
-      maxAge: SESSION_TTL_SECONDS,
-      sameSite: "Lax"
-    });
-    return redirect("/", [sessionCookie, clearCookie(TX_COOKIE)]);
+    claims = await verifyFirebaseToken(idToken);
   } catch (err) {
-    console.error("[auth] callback error", err);
-    return redirect("/auth?error=login", [clearCookie(TX_COOKIE)]);
+    console.error("[auth] token verification failed", err);
+    return json({ error: "Invalid token" }, { status: 401 });
   }
+  await upsertUserFromClaims(claims);
+  const sid = await createSession({ userId: claims.sub, claims });
+  const cookie = serializeCookie(SESSION_COOKIE, sid, {
+    maxAge: SESSION_TTL_SECONDS,
+    sameSite: "Lax"
+  });
+  return json({ ok: true }, { headers: { "Set-Cookie": cookie } });
 }
 async function handleLogout(request) {
   const cookies = parseCookies(request.headers.get("cookie"));
   await destroySession(cookies[SESSION_COOKIE]);
-  let endSession = "/";
-  try {
-    const config = await getOidcConfig();
-    endSession = client.buildEndSessionUrl(config, {
-      client_id: process.env.REPL_ID,
-      post_logout_redirect_uri: originFromRequest(request)
-    }).href;
-  } catch {
-    endSession = "/";
-  }
-  return redirect(endSession, [clearCookie(SESSION_COOKIE)]);
+  return json({ ok: true }, { headers: { "Set-Cookie": clearCookie(SESSION_COOKIE) } });
 }
 async function handleAuthUser(request) {
   const cookies = parseCookies(request.headers.get("cookie"));
   const session = await getSession(cookies[SESSION_COOKIE]);
   if (!session) {
-    return Response.json({ authenticated: false });
+    return json({ authenticated: false });
   }
   const [profile, admin] = await Promise.all([
     getProfile(session.userId),
     isAdmin(session.userId)
   ]);
-  return Response.json({
+  return json({
     authenticated: true,
     user: {
       id: session.userId,
@@ -304,8 +254,7 @@ async function handleAuthUser(request) {
   });
 }
 const ROUTES = {
-  "/api/login": handleLogin,
-  "/api/callback": handleCallback,
+  "/api/session": handleSession,
   "/api/logout": handleLogout,
   "/api/auth/user": handleAuthUser
 };
@@ -340,7 +289,7 @@ async function serveGallery(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-Bkw0E9e7.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-C6Duf4un.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }

@@ -1,4 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  onIdTokenChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+} from "firebase/auth";
+import { getFirebaseAuth, googleProvider } from "@/lib/firebase";
 
 export interface ProfileRow {
   id: string;
@@ -28,6 +37,10 @@ interface AuthCtx {
   isApproved: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
+  signInEmail: (email: string, password: string) => Promise<void>;
+  signUpEmail: (email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  signInGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -46,6 +59,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const clearState = () => {
+    setUser(null);
+    setProfile(null);
+    setIsAdmin(false);
+  };
+
   const load = async () => {
     try {
       const res = await fetch("/api/auth/user", { credentials: "include" });
@@ -55,27 +74,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(data.profile ?? null);
         setIsAdmin(!!data.isAdmin);
       } else {
-        setUser(null);
-        setProfile(null);
-        setIsAdmin(false);
+        clearState();
       }
     } catch {
-      setUser(null);
-      setProfile(null);
-      setIsAdmin(false);
+      clearState();
     }
   };
 
+  // Firebase is the source of truth: when a Firebase session exists we exchange
+  // its ID token for a server session cookie; when it's gone we clear the cookie.
   useEffect(() => {
-    load().finally(() => setLoading(false));
+    const auth = getFirebaseAuth();
+    const unsub = onIdTokenChanged(auth, async (fbUser) => {
+      try {
+        if (fbUser) {
+          const idToken = await fbUser.getIdToken();
+          await fetch("/api/session", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ idToken }),
+          });
+          await load();
+        } else {
+          await fetch("/api/logout", { method: "POST", credentials: "include" });
+          clearState();
+        }
+      } catch {
+        clearState();
+      } finally {
+        setLoading(false);
+      }
+    });
+    return () => unsub();
   }, []);
 
   const refresh = async () => {
     await load();
   };
 
+  const signInEmail = async (email: string, password: string) => {
+    await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
+  };
+
+  const signUpEmail = async (email: string, password: string) => {
+    await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
+  };
+
+  const resetPassword = async (email: string) => {
+    await sendPasswordResetEmail(getFirebaseAuth(), email);
+  };
+
+  const signInGoogle = async () => {
+    await signInWithPopup(getFirebaseAuth(), googleProvider);
+  };
+
   const signOut = async () => {
-    window.location.href = "/api/logout";
+    await firebaseSignOut(getFirebaseAuth());
   };
 
   return (
@@ -87,6 +142,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isApproved: !!profile?.approved,
         loading,
         refresh,
+        signInEmail,
+        signUpEmail,
+        resetPassword,
+        signInGoogle,
         signOut,
       }}
     >

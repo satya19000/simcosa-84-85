@@ -1,14 +1,12 @@
 import crypto from "node:crypto";
 import { query } from "../db";
-import type { OidcClaims } from "./oidc";
+import type { AuthClaims } from "./firebase";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 1 week
 
 export interface SessionData {
   userId: string;
-  claims: OidcClaims;
-  refresh_token?: string | null;
-  access_expires_at?: number | null; // epoch seconds
+  claims: AuthClaims;
 }
 
 export async function createSession(data: SessionData): Promise<string> {

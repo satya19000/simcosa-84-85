@@ -1,5 +1,5 @@
 import { query } from "../db";
-import type { OidcClaims } from "./oidc";
+import type { AuthClaims } from "./firebase";
 
 export interface ProfileRow {
   id: string;
@@ -22,9 +22,9 @@ export interface AuthUser {
   profile_image_url: string | null;
 }
 
-// Upsert the Replit Auth user, and ensure a member profile + role exist.
+// Upsert the authenticated user, and ensure a member profile + role exist.
 // New users are immediately approved (no admin-approval gating).
-export async function upsertUserFromClaims(claims: OidcClaims): Promise<void> {
+export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
   const id = claims.sub;
   const email = claims.email ?? null;
   const firstName = claims.first_name ?? null;

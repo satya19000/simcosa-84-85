@@ -18,8 +18,8 @@ function AuthLayout() {
       <div className="mx-auto max-w-md px-4 py-16 text-center">
         <h2>Members only</h2>
         <p className="mt-3 text-muted-foreground">Please sign in to view this page.</p>
-        <a href="/api/login">
-          <Button className="mt-6 h-12 px-6 text-base">Log in with Replit</Button>
+        <a href="/auth">
+          <Button className="mt-6 h-12 px-6 text-base">Sign in</Button>
         </a>
       </div>
     );
