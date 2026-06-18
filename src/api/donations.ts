@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth } from "../backend/auth/middleware";
+import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
 export interface DonationRow {
@@ -21,7 +21,7 @@ export interface ExpenseRow {
 }
 
 export const listDonations = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async (): Promise<DonationRow[]> => {
     const res = await query<DonationRow>(
       `SELECT * FROM donations ORDER BY donated_on DESC`,
@@ -30,7 +30,7 @@ export const listDonations = createServerFn({ method: "GET" })
   });
 
 export const listExpenses = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async (): Promise<ExpenseRow[]> => {
     const res = await query<ExpenseRow>(
       `SELECT * FROM expenses ORDER BY spent_on DESC`,

@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth } from "../backend/auth/middleware";
+import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
 export interface GalleryRow {
@@ -13,7 +13,7 @@ export interface GalleryRow {
 }
 
 export const listGallery = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async (): Promise<GalleryRow[]> => {
     const res = await query<GalleryRow>(
       `SELECT id, title, caption, media_type, storage_path, uploaded_by, created_at
@@ -23,7 +23,7 @@ export const listGallery = createServerFn({ method: "GET" })
   });
 
 export const uploadGalleryItem = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: FormData) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     const file = data.get("file") as File | null;

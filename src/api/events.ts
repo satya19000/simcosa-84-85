@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth } from "../backend/auth/middleware";
+import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
 export interface EventRow {
@@ -21,7 +21,7 @@ export interface RsvpRow {
 }
 
 export const listEvents = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async (): Promise<EventRow[]> => {
     const res = await query<EventRow>(
       `SELECT * FROM events ORDER BY event_date ASC`,
@@ -30,7 +30,7 @@ export const listEvents = createServerFn({ method: "GET" })
   });
 
 export const listMyRsvps = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async ({ context }): Promise<RsvpRow[]> => {
     const res = await query<RsvpRow>(
       `SELECT id, event_id, user_id, status FROM event_rsvps WHERE user_id = $1`,
@@ -40,7 +40,7 @@ export const listMyRsvps = createServerFn({ method: "GET" })
   });
 
 export const listRsvpCounts = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async (): Promise<{ event_id: string; status: string }[]> => {
     const res = await query<{ event_id: string; status: string }>(
       `SELECT event_id, status FROM event_rsvps`,
@@ -49,7 +49,7 @@ export const listRsvpCounts = createServerFn({ method: "GET" })
   });
 
 export const setRsvp = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator(
     (d: { eventId: string; status: "attending" | "maybe" | "not_attending" }) => d,
   )

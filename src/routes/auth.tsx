@@ -1,10 +1,11 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { useAuth } from "@/lib/auth";
+import { useAuth, type ApprovalStatus } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Mail, Lock, User } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Mail, Lock, User, Phone, MapPin, Briefcase, Camera } from "lucide-react";
 import { queueWelcomeToast } from "@/components/WelcomeToast";
 
 export const Route = createFileRoute("/auth")({
@@ -73,6 +74,20 @@ function describeAuthError(err: unknown): string {
   return `${base} (${code})`;
 }
 
+function navigateForStatus(
+  router: ReturnType<typeof useRouter>,
+  name: string,
+  status: ApprovalStatus | undefined,
+) {
+  if (status && status !== "approved") {
+    queueWelcomeToast(name, status);
+    router.navigate({ to: "/pending-approval" });
+  } else {
+    queueWelcomeToast(name, "approved");
+    router.navigate({ to: "/" });
+  }
+}
+
 function AuthPage() {
   const router = useRouter();
   const { user, loading, signInEmail, signUpEmail, resetPassword, signInGoogle } = useAuth();
@@ -81,6 +96,15 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [city, setCity] = useState("");
+  const [profession, setProfession] = useState("");
+  const [batchConfirmed, setBatchConfirmed] = useState(false);
+  const [spouseName, setSpouseName] = useState("");
+  const [bio, setBio] = useState("");
+  const [clinic, setClinic] = useState("");
+  const [countryState, setCountryState] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -100,14 +124,34 @@ function AuthPage() {
     e.preventDefault();
     setError(null);
     setNotice(null);
+    if (mode === "signup" && !batchConfirmed) {
+      setError("Please confirm that you belong to SIMCOSA 84–85 Batch.");
+      return;
+    }
     setBusy(true);
     try {
       if (mode === "signin") {
-        const name = await signInEmail(email.trim(), password);
-        queueWelcomeToast(name);
+        const { name, profile } = await signInEmail(email.trim(), password);
+        navigateForStatus(router, name, profile?.approval_status);
       } else if (mode === "signup") {
-        const name = await signUpEmail(email.trim(), password, fullName.trim());
-        queueWelcomeToast(name);
+        const { name, profile } = await signUpEmail(
+          email.trim(),
+          password,
+          fullName.trim(),
+          {
+            phone: mobile.trim(),
+            whatsapp: mobile.trim(),
+            location: city.trim(),
+            profession: profession.trim(),
+            bio: bio.trim() || undefined,
+            spouse_name: spouseName.trim() || undefined,
+            clinic_or_hospital: clinic.trim() || undefined,
+            country_state: countryState.trim() || undefined,
+            batch_confirmed: true,
+          },
+          photoFile,
+        );
+        navigateForStatus(router, name, profile?.approval_status);
       } else {
         await resetPassword(email.trim());
         setNotice("Password reset email sent. Check your inbox.");
@@ -124,8 +168,8 @@ function AuthPage() {
     setNotice(null);
     setGoogleBusy(true);
     try {
-      const name = await signInGoogle();
-      queueWelcomeToast(name);
+      const { name, profile } = await signInGoogle();
+      navigateForStatus(router, name, profile?.approval_status);
     } catch (err) {
       setError(describeAuthError(err));
     } finally {
@@ -139,7 +183,7 @@ function AuthPage() {
     mode === "signin"
       ? "Sign in to access the members-only portal for our batch."
       : mode === "signup"
-        ? "Sign up and your member profile is created automatically."
+        ? "Sign up below — an admin will review and approve your membership."
         : "Enter your email and we'll send you a reset link.";
 
   return (
@@ -180,21 +224,112 @@ function AuthPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === "signup" && (
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                  id="fullName"
-                  type="text"
-                  autoComplete="name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Dr. Kumar"
-                  className="h-12 pl-10 text-base"
-                />
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Full Name *</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="fullName"
+                    type="text"
+                    autoComplete="name"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Dr. Kumar"
+                    className="h-12 pl-10 text-base"
+                  />
+                </div>
               </div>
-            </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="mobile">Mobile / WhatsApp *</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input
+                      id="mobile"
+                      type="tel"
+                      required
+                      value={mobile}
+                      onChange={(e) => setMobile(e.target.value)}
+                      placeholder="+91 98765 43210"
+                      className="h-12 pl-10 text-base"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="city">City *</Label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input
+                      id="city"
+                      type="text"
+                      required
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Vijayawada"
+                      className="h-12 pl-10 text-base"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profession">Profession / Specialization *</Label>
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="profession"
+                    type="text"
+                    required
+                    value={profession}
+                    onChange={(e) => setProfession(e.target.value)}
+                    placeholder="Cardiologist"
+                    className="h-12 pl-10 text-base"
+                  />
+                </div>
+              </div>
+
+              <details className="rounded-xl border border-amber-100 bg-amber-50/40 p-3">
+                <summary className="cursor-pointer text-sm font-semibold text-amber-700">
+                  Optional details (photo, spouse, bio…)
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="photo">Profile photo</Label>
+                    <div className="relative">
+                      <Camera className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                      <Input
+                        id="photo"
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setPhotoFile(e.target.files?.[0])}
+                        className="h-12 pl-10 text-base pt-2.5"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="spouseName">Spouse name</Label>
+                      <Input id="spouseName" value={spouseName} onChange={(e) => setSpouseName(e.target.value)} className="h-12 text-base" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="clinic">Clinic / Hospital</Label>
+                      <Input id="clinic" value={clinic} onChange={(e) => setClinic(e.target.value)} className="h-12 text-base" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="countryState">Current country / state</Label>
+                    <Input id="countryState" value={countryState} onChange={(e) => setCountryState(e.target.value)} className="h-12 text-base" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bio">Short bio</Label>
+                    <Textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} rows={3} className="text-base" />
+                  </div>
+                </div>
+              </details>
+            </>
           )}
 
           <div className="space-y-2">
@@ -243,6 +378,20 @@ function AuthPage() {
                 />
               </div>
             </div>
+          )}
+
+          {mode === "signup" && (
+            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={batchConfirmed}
+                onChange={(e) => setBatchConfirmed(e.target.checked)}
+                className="mt-0.5 h-5 w-5 accent-amber-500"
+              />
+              <span className="text-gray-700 font-medium">
+                I confirm that I belong to SIMCOSA 84–85 Batch
+              </span>
+            </label>
           )}
 
           {error && (
@@ -316,7 +465,7 @@ function AuthPage() {
       </div>
 
       <p className="text-center text-sm text-muted-foreground mt-5">
-        New members get full access automatically — no approval needed.
+        New members are reviewed by an admin before getting full access.
       </p>
     </div>
   );

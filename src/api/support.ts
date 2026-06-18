@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth } from "../backend/auth/middleware";
+import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
 export interface SupportRow {
@@ -13,7 +13,7 @@ export interface SupportRow {
 }
 
 export const listMySupport = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async ({ context }): Promise<SupportRow[]> => {
     const res = await query<SupportRow>(
       `SELECT * FROM support_requests WHERE user_id = $1 ORDER BY created_at DESC`,
@@ -23,7 +23,7 @@ export const listMySupport = createServerFn({ method: "GET" })
   });
 
 export const createSupport = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator(
     (d: {
       category: "medical" | "financial" | "emotional" | "family" | "other";

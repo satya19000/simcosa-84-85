@@ -40,8 +40,12 @@ CREATE TABLE IF NOT EXISTS user_roles (
 );
 
 -- =========================
--- PROFILES (approved defaults to true — no admin-approval gating)
+-- PROFILES (new signups are pending until an admin approves them)
 -- =========================
+DO $$ BEGIN
+  CREATE TYPE approval_status AS ENUM ('pending', 'approved', 'rejected', 'needs_clarification');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 CREATE TABLE IF NOT EXISTS profiles (
   id varchar PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   full_name text NOT NULL,
@@ -52,9 +56,39 @@ CREATE TABLE IF NOT EXISTS profiles (
   location text,
   profession text,
   bio text,
-  approved boolean NOT NULL DEFAULT true,
+  spouse_name text,
+  clinic_or_hospital text,
+  country_state text,
+  batch_confirmed boolean NOT NULL DEFAULT false,
+  approved boolean NOT NULL DEFAULT false,
+  approval_status approval_status NOT NULL DEFAULT 'pending',
+  approved_by varchar REFERENCES users(id) ON DELETE SET NULL,
+  approved_at timestamptz,
+  rejection_reason text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Idempotent upgrade path for databases created before approval gating existed.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS spouse_name text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS clinic_or_hospital text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS country_state text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS batch_confirmed boolean NOT NULL DEFAULT false;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS approval_status approval_status NOT NULL DEFAULT 'approved';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS approved_by varchar REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS approved_at timestamptz;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS rejection_reason text;
+ALTER TABLE profiles ALTER COLUMN approved SET DEFAULT false;
+-- Backfill: any pre-existing row defaulted to approval_status='approved' above (matches
+-- their already-true `approved` flag from before this migration); keep them in sync.
+UPDATE profiles SET approval_status = 'rejected' WHERE approved = false AND approval_status = 'approved';
+
+-- Profile photo binary storage (mirrors gallery_items' bytea approach).
+CREATE TABLE IF NOT EXISTS profile_photos (
+  user_id varchar PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  mime text NOT NULL,
+  data bytea NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- =========================

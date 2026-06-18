@@ -4,18 +4,38 @@ const STORAGE_KEY = "simcosa_welcome_name";
 const VISIBLE_MS = 4000;
 const FADE_MS = 400;
 
+type WelcomeStatus = "approved" | "pending" | "rejected" | "needs_clarification";
+
+interface WelcomePayload {
+  name: string;
+  status: WelcomeStatus;
+}
+
 // Call right after a successful sign-in / sign-up / Google login, before
 // navigating away, so the next page mount can pick it up and show the toast.
-export function queueWelcomeToast(name: string) {
+export function queueWelcomeToast(name: string, status: WelcomeStatus = "approved") {
   try {
-    sessionStorage.setItem(STORAGE_KEY, name);
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ name, status }));
   } catch {
     // sessionStorage unavailable (e.g. private mode) — silently skip
   }
 }
 
+function messageFor(payload: WelcomePayload): string {
+  switch (payload.status) {
+    case "pending":
+      return "Your account is awaiting admin approval.";
+    case "rejected":
+      return "Your membership request was not approved. Please contact admin.";
+    case "needs_clarification":
+      return "Admin needs more details from you. Please check your profile.";
+    default:
+      return "";
+  }
+}
+
 export function WelcomeToast() {
-  const [name, setName] = useState<string | null>(null);
+  const [payload, setPayload] = useState<WelcomePayload | null>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -28,10 +48,17 @@ export function WelcomeToast() {
     }
     if (!stored) return;
 
-    setName(stored);
+    let parsed: WelcomePayload;
+    try {
+      parsed = JSON.parse(stored) as WelcomePayload;
+    } catch {
+      parsed = { name: stored, status: "approved" };
+    }
+
+    setPayload(parsed);
     const showTimer = requestAnimationFrame(() => setVisible(true));
     const hideTimer = setTimeout(() => setVisible(false), VISIBLE_MS);
-    const removeTimer = setTimeout(() => setName(null), VISIBLE_MS + FADE_MS);
+    const removeTimer = setTimeout(() => setPayload(null), VISIBLE_MS + FADE_MS);
 
     return () => {
       cancelAnimationFrame(showTimer);
@@ -40,7 +67,7 @@ export function WelcomeToast() {
     };
   }, []);
 
-  if (!name) return null;
+  if (!payload) return null;
 
   return (
     <div
@@ -58,8 +85,14 @@ export function WelcomeToast() {
           className="h-10 w-10 sm:h-12 sm:w-12 rounded-full object-cover ring-2 ring-amber-400 ring-offset-1 shrink-0"
         />
         <p className="text-base sm:text-lg font-semibold leading-snug text-gray-800">
-          Welcome to <span className="text-amber-600 font-bold">SIMCOSA</span>,{" "}
-          <span className="font-bold text-gray-900">{name}</span>!
+          {payload.status === "approved" ? (
+            <>
+              Welcome to <span className="text-amber-600 font-bold">SIMCOSA</span>,{" "}
+              <span className="font-bold text-gray-900">{payload.name}</span>!
+            </>
+          ) : (
+            messageFor(payload)
+          )}
         </p>
       </div>
     </div>
