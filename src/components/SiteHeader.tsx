@@ -1,5 +1,5 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { Menu, X, Users, Camera, Calendar, MessageCircle, BookOpen, Heart, HelpCircle, Trophy, LogIn, LogOut } from "lucide-react";
+import { Menu, X, Users, Camera, Calendar, MessageCircle, BookOpen, Heart, HelpCircle, Trophy, LogIn, LogOut, PenLine } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ const memberLinks = [
   { to: "/gallery", label: "Gallery", icon: Camera },
   { to: "/events", label: "Events", icon: Calendar },
   { to: "/memories", label: "Memories", icon: BookOpen },
+  { to: "/blogs", label: "Blogs", icon: PenLine },
   { to: "/announcements", label: "News", icon: MessageCircle },
   { to: "/donations", label: "Donate", icon: Heart },
   { to: "/support", label: "Support", icon: HelpCircle },
@@ -158,6 +159,7 @@ export function SiteFooter() {
                 { to: "/gallery", label: "Photo Gallery" },
                 { to: "/events", label: "Events & Reunions" },
                 { to: "/memories", label: "Memories Wall" },
+                { to: "/blogs", label: "Blogs" },
               ].map(l => (
                 <li key={l.to}>
                   <Link to={l.to} className="text-gray-400 hover:text-amber-400 transition-colors">→ {l.label}</Link>

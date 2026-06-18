@@ -305,10 +305,32 @@ async function serveGallery(request) {
     }
   });
 }
+async function serveBlogImage(request) {
+  const { pathname } = new URL(request.url);
+  const match = pathname.match(/^\/api\/blogs\/image\/([^/]+)$/);
+  if (!match) return null;
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const session = await getSession(cookies[SESSION_COOKIE]);
+  if (!session) return new Response("Unauthorized", { status: 401 });
+  const id = decodeURIComponent(match[1]);
+  const res = await query(
+    `SELECT image_data, image_mime FROM blogs WHERE id = $1`,
+    [id]
+  );
+  const row = res.rows[0];
+  if (!row || !row.image_data) return new Response("Not found", { status: 404 });
+  return new Response(new Uint8Array(row.image_data), {
+    status: 200,
+    headers: {
+      "Content-Type": row.image_mime ?? "application/octet-stream",
+      "Cache-Control": "private, max-age=3600"
+    }
+  });
+}
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-DoO_dZ7K.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-DU9y0RcP.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
@@ -335,6 +357,8 @@ const server = {
       if (authResponse) return authResponse;
       const galleryResponse = await serveGallery(request);
       if (galleryResponse) return galleryResponse;
+      const blogImageResponse = await serveBlogImage(request);
+      if (blogImageResponse) return blogImageResponse;
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

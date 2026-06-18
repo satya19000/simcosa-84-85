@@ -20,8 +20,10 @@ import { Route as AuthenticatedGalleryRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated/events'
 import { Route as AuthenticatedDonationsRouteImport } from './routes/_authenticated/donations'
 import { Route as AuthenticatedDirectoryRouteImport } from './routes/_authenticated/directory'
+import { Route as AuthenticatedBlogsRouteImport } from './routes/_authenticated/blogs'
 import { Route as AuthenticatedAnnouncementsRouteImport } from './routes/_authenticated/announcements'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedBlogsIdRouteImport } from './routes/_authenticated/blogs.$id'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -77,6 +79,11 @@ const AuthenticatedDirectoryRoute = AuthenticatedDirectoryRouteImport.update({
   path: '/directory',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedBlogsRoute = AuthenticatedBlogsRouteImport.update({
+  id: '/blogs',
+  path: '/blogs',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAnnouncementsRoute =
   AuthenticatedAnnouncementsRouteImport.update({
     id: '/announcements',
@@ -88,6 +95,11 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedBlogsIdRoute = AuthenticatedBlogsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AuthenticatedBlogsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -95,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/announcements': typeof AuthenticatedAnnouncementsRoute
+  '/blogs': typeof AuthenticatedBlogsRouteWithChildren
   '/directory': typeof AuthenticatedDirectoryRoute
   '/donations': typeof AuthenticatedDonationsRoute
   '/events': typeof AuthenticatedEventsRoute
@@ -102,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/memories': typeof AuthenticatedMemoriesRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/support': typeof AuthenticatedSupportRoute
+  '/blogs/$id': typeof AuthenticatedBlogsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -109,6 +123,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/announcements': typeof AuthenticatedAnnouncementsRoute
+  '/blogs': typeof AuthenticatedBlogsRouteWithChildren
   '/directory': typeof AuthenticatedDirectoryRoute
   '/donations': typeof AuthenticatedDonationsRoute
   '/events': typeof AuthenticatedEventsRoute
@@ -116,6 +131,7 @@ export interface FileRoutesByTo {
   '/memories': typeof AuthenticatedMemoriesRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/support': typeof AuthenticatedSupportRoute
+  '/blogs/$id': typeof AuthenticatedBlogsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +141,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/announcements': typeof AuthenticatedAnnouncementsRoute
+  '/_authenticated/blogs': typeof AuthenticatedBlogsRouteWithChildren
   '/_authenticated/directory': typeof AuthenticatedDirectoryRoute
   '/_authenticated/donations': typeof AuthenticatedDonationsRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
@@ -132,6 +149,7 @@ export interface FileRoutesById {
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/support': typeof AuthenticatedSupportRoute
+  '/_authenticated/blogs/$id': typeof AuthenticatedBlogsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +159,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/announcements'
+    | '/blogs'
     | '/directory'
     | '/donations'
     | '/events'
@@ -148,6 +167,7 @@ export interface FileRouteTypes {
     | '/memories'
     | '/profile'
     | '/support'
+    | '/blogs/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +175,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/announcements'
+    | '/blogs'
     | '/directory'
     | '/donations'
     | '/events'
@@ -162,6 +183,7 @@ export interface FileRouteTypes {
     | '/memories'
     | '/profile'
     | '/support'
+    | '/blogs/$id'
   id:
     | '__root__'
     | '/'
@@ -170,6 +192,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/admin'
     | '/_authenticated/announcements'
+    | '/_authenticated/blogs'
     | '/_authenticated/directory'
     | '/_authenticated/donations'
     | '/_authenticated/events'
@@ -177,6 +200,7 @@ export interface FileRouteTypes {
     | '/_authenticated/memories'
     | '/_authenticated/profile'
     | '/_authenticated/support'
+    | '/_authenticated/blogs/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -265,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDirectoryRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/blogs': {
+      id: '/_authenticated/blogs'
+      path: '/blogs'
+      fullPath: '/blogs'
+      preLoaderRoute: typeof AuthenticatedBlogsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/announcements': {
       id: '/_authenticated/announcements'
       path: '/announcements'
@@ -279,12 +310,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/blogs/$id': {
+      id: '/_authenticated/blogs/$id'
+      path: '/$id'
+      fullPath: '/blogs/$id'
+      preLoaderRoute: typeof AuthenticatedBlogsIdRouteImport
+      parentRoute: typeof AuthenticatedBlogsRoute
+    }
   }
 }
+
+interface AuthenticatedBlogsRouteChildren {
+  AuthenticatedBlogsIdRoute: typeof AuthenticatedBlogsIdRoute
+}
+
+const AuthenticatedBlogsRouteChildren: AuthenticatedBlogsRouteChildren = {
+  AuthenticatedBlogsIdRoute: AuthenticatedBlogsIdRoute,
+}
+
+const AuthenticatedBlogsRouteWithChildren =
+  AuthenticatedBlogsRoute._addFileChildren(AuthenticatedBlogsRouteChildren)
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedAnnouncementsRoute: typeof AuthenticatedAnnouncementsRoute
+  AuthenticatedBlogsRoute: typeof AuthenticatedBlogsRouteWithChildren
   AuthenticatedDirectoryRoute: typeof AuthenticatedDirectoryRoute
   AuthenticatedDonationsRoute: typeof AuthenticatedDonationsRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
@@ -297,6 +347,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedAnnouncementsRoute: AuthenticatedAnnouncementsRoute,
+  AuthenticatedBlogsRoute: AuthenticatedBlogsRouteWithChildren,
   AuthenticatedDirectoryRoute: AuthenticatedDirectoryRoute,
   AuthenticatedDonationsRoute: AuthenticatedDonationsRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
