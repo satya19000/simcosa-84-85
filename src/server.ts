@@ -4,6 +4,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleAuthRoute } from "./backend/auth/handlers";
 import { serveGallery } from "./backend/gallery-serve";
+import { serveBlogImage } from "./backend/blog-image-serve";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -47,6 +48,9 @@ export default {
 
       const galleryResponse = await serveGallery(request);
       if (galleryResponse) return galleryResponse;
+
+      const blogImageResponse = await serveBlogImage(request);
+      if (blogImageResponse) return blogImageResponse;
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

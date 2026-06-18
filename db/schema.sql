@@ -182,3 +182,41 @@ CREATE TABLE IF NOT EXISTS memory_comments (
   body text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- =========================
+-- BLOGS + LIKES + COMMENTS
+-- =========================
+DO $$ BEGIN
+  CREATE TYPE blog_category AS ENUM ('opinions','poems','health_tips','memories','events','general');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+CREATE TABLE IF NOT EXISTS blogs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  author_id varchar REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  title text NOT NULL,
+  content text NOT NULL,
+  excerpt text,
+  category blog_category NOT NULL DEFAULT 'general',
+  image_data bytea,
+  image_mime text,
+  is_featured boolean NOT NULL DEFAULT false,
+  is_published boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS blog_likes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  blog_id uuid REFERENCES blogs(id) ON DELETE CASCADE NOT NULL,
+  user_id varchar REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(blog_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS blog_comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  blog_id uuid REFERENCES blogs(id) ON DELETE CASCADE NOT NULL,
+  user_id varchar REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
