@@ -4,7 +4,8 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Mail, Lock } from "lucide-react";
+import { Loader2, Mail, Lock, User } from "lucide-react";
+import { queueWelcomeToast } from "@/components/WelcomeToast";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Login — SIMCOSA 84–85" }] }),
@@ -79,6 +80,7 @@ function AuthPage() {
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -101,9 +103,11 @@ function AuthPage() {
     setBusy(true);
     try {
       if (mode === "signin") {
-        await signInEmail(email.trim(), password);
+        const name = await signInEmail(email.trim(), password);
+        queueWelcomeToast(name);
       } else if (mode === "signup") {
-        await signUpEmail(email.trim(), password);
+        const name = await signUpEmail(email.trim(), password, fullName.trim());
+        queueWelcomeToast(name);
       } else {
         await resetPassword(email.trim());
         setNotice("Password reset email sent. Check your inbox.");
@@ -120,7 +124,8 @@ function AuthPage() {
     setNotice(null);
     setGoogleBusy(true);
     try {
-      await signInGoogle();
+      const name = await signInGoogle();
+      queueWelcomeToast(name);
     } catch (err) {
       setError(describeAuthError(err));
     } finally {
@@ -174,6 +179,24 @@ function AuthPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === "signup" && (
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Full Name</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                  id="fullName"
+                  type="text"
+                  autoComplete="name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Dr. Kumar"
+                  className="h-12 pl-10 text-base"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <div className="relative">

@@ -6,6 +6,8 @@ import {
   sendPasswordResetEmail,
   signInWithPopup,
   signOut as firebaseSignOut,
+  updateProfile,
+  type User as FirebaseUser,
 } from "firebase/auth";
 import { getFirebaseAuth, googleProvider } from "@/lib/firebase";
 
@@ -37,14 +39,22 @@ interface AuthCtx {
   isApproved: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
-  signInEmail: (email: string, password: string) => Promise<void>;
-  signUpEmail: (email: string, password: string) => Promise<void>;
+  signInEmail: (email: string, password: string) => Promise<string>;
+  signUpEmail: (email: string, password: string, fullName?: string) => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
-  signInGoogle: () => Promise<void>;
+  signInGoogle: () => Promise<string>;
   signOut: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx | undefined>(undefined);
+
+// Best display name for the welcome popup: full name if we have one,
+// otherwise the part of the email before the @.
+function welcomeNameFor(fbUser: FirebaseUser): string {
+  if (fbUser.displayName?.trim()) return fbUser.displayName.trim();
+  if (fbUser.email) return fbUser.email.split("@")[0];
+  return "Batchmate";
+}
 
 interface AuthResponse {
   authenticated: boolean;
@@ -119,11 +129,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInEmail = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
+    const cred = await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
+    return welcomeNameFor(cred.user);
   };
 
-  const signUpEmail = async (email: string, password: string) => {
-    await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
+  const signUpEmail = async (email: string, password: string, fullName?: string) => {
+    const cred = await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
+    const trimmedName = fullName?.trim();
+    if (trimmedName) {
+      await updateProfile(cred.user, { displayName: trimmedName });
+    }
+    return trimmedName || welcomeNameFor(cred.user);
   };
 
   const resetPassword = async (email: string) => {
@@ -131,7 +147,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInGoogle = async () => {
-    await signInWithPopup(getFirebaseAuth(), googleProvider);
+    const cred = await signInWithPopup(getFirebaseAuth(), googleProvider);
+    return welcomeNameFor(cred.user);
   };
 
   const signOut = async () => {
