@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth, requireAdmin } from "../backend/auth/middleware";
+import { requireApproved, requireAdmin } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
 export type BlogCategory = "opinions" | "poems" | "health_tips" | "memories" | "events" | "general";
@@ -41,7 +41,7 @@ const LIST_COLUMNS = `
 `;
 
 export const listBlogs = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { category?: BlogCategory } | undefined) => d)
   .handler(async ({ data, context }): Promise<BlogRow[]> => {
     const params: unknown[] = [];
@@ -61,7 +61,7 @@ export const listBlogs = createServerFn({ method: "GET" })
   });
 
 export const getBlog = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { id: string }) => d)
   .handler(async ({ data, context }): Promise<BlogRow | null> => {
     const res = await query<BlogRow>(
@@ -88,7 +88,7 @@ export const getBlog = createServerFn({ method: "GET" })
   });
 
 export const createBlog = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: FormData) => d)
   .handler(async ({ data, context }): Promise<{ ok: true; id: string }> => {
     const title = String(data.get("title") ?? "").trim();
@@ -115,7 +115,7 @@ export const createBlog = createServerFn({ method: "POST" })
   });
 
 export const updateBlog = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { id: string; title: string; content: string; excerpt?: string; category: BlogCategory }) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     const owned = await query<{ author_id: string }>(`SELECT author_id FROM blogs WHERE id = $1`, [data.id]);
@@ -131,7 +131,7 @@ export const updateBlog = createServerFn({ method: "POST" })
   });
 
 export const deleteBlog = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { id: string }) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     const owned = await query<{ author_id: string }>(`SELECT author_id FROM blogs WHERE id = $1`, [data.id]);
@@ -144,7 +144,7 @@ export const deleteBlog = createServerFn({ method: "POST" })
   });
 
 export const toggleBlogLike = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { blogId: string; liked: boolean }) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     if (data.liked) {
@@ -159,7 +159,7 @@ export const toggleBlogLike = createServerFn({ method: "POST" })
   });
 
 export const addBlogComment = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { blogId: string; body: string }) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     await query(`INSERT INTO blog_comments (blog_id, user_id, body) VALUES ($1, $2, $3)`, [

@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth } from "../backend/auth/middleware";
+import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
 export interface AnnouncementRow {
@@ -12,7 +12,7 @@ export interface AnnouncementRow {
 }
 
 export const listAnnouncements = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async (): Promise<AnnouncementRow[]> => {
     const res = await query<AnnouncementRow>(
       `SELECT * FROM announcements ORDER BY created_at DESC`,

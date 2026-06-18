@@ -42,3 +42,14 @@ export const requireAdmin = createMiddleware({ type: "function" }).server(
     return next({ context: auth });
   },
 );
+
+// Requires a logged-in, admin-approved member (admins always pass).
+export const requireApproved = createMiddleware({ type: "function" }).server(
+  async ({ next }) => {
+    const auth = await resolveAuth();
+    if (!auth.isAdmin && auth.profile?.approval_status !== "approved") {
+      throw new Error("Forbidden: account pending approval");
+    }
+    return next({ context: auth });
+  },
+);

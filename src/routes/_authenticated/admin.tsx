@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  adminListMembers, adminSetApproved,
+  adminListMembers,
+  adminApproveMember, adminRejectMember, adminMarkNeedsClarification, adminDeleteMember,
+  adminPromoteToAdmin, adminDemoteAdmin, adminListAdmins, adminAddAdminByEmail,
   adminListEvents, adminCreateEvent, adminDeleteEvent,
   adminListAnnouncements, adminCreateAnnouncement, adminDeleteAnnouncement,
   adminListDonations, adminCreateDonation,
@@ -34,16 +36,22 @@ function Admin() {
       <h1>Admin Dashboard</h1>
       <p className="text-muted-foreground mt-2">Manage members, events, announcements, finances and requests.</p>
 
-      <Tabs defaultValue="members" className="mt-8">
+      <Tabs defaultValue="pending" className="mt-8">
         <TabsList className="flex flex-wrap h-auto justify-start">
-          <TabsTrigger value="members">Members</TabsTrigger>
+          <TabsTrigger value="pending">Pending Members</TabsTrigger>
+          <TabsTrigger value="approved">Approved Members</TabsTrigger>
+          <TabsTrigger value="rejected">Rejected Members</TabsTrigger>
+          <TabsTrigger value="admins">Admins</TabsTrigger>
           <TabsTrigger value="events">Events</TabsTrigger>
           <TabsTrigger value="announcements">Announcements</TabsTrigger>
           <TabsTrigger value="donations">Donations</TabsTrigger>
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
           <TabsTrigger value="support">Support</TabsTrigger>
         </TabsList>
-        <TabsContent value="members" className="mt-6"><MembersTab /></TabsContent>
+        <TabsContent value="pending" className="mt-6"><PendingMembersTab /></TabsContent>
+        <TabsContent value="approved" className="mt-6"><ApprovedMembersTab /></TabsContent>
+        <TabsContent value="rejected" className="mt-6"><RejectedMembersTab /></TabsContent>
+        <TabsContent value="admins" className="mt-6"><AdminsTab /></TabsContent>
         <TabsContent value="events" className="mt-6"><EventsTab /></TabsContent>
         <TabsContent value="announcements" className="mt-6"><AnnouncementsTab /></TabsContent>
         <TabsContent value="donations" className="mt-6"><DonationsTab /></TabsContent>
@@ -54,34 +62,269 @@ function Admin() {
   );
 }
 
-function MembersTab() {
+function useAdminMembers() {
+  return useQuery({ queryKey: ["admin-members"], queryFn: () => adminListMembers() });
+}
+
+function PendingMembersTab() {
   const qc = useQueryClient();
-  const { data } = useQuery({
-    queryKey: ["admin-members"],
-    queryFn: () => adminListMembers(),
-  });
-  const toggle = async (id: string, approved: boolean) => {
+  const { data } = useAdminMembers();
+  const [reasonFor, setReasonFor] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const pending = data?.filter((m) => m.approval_status === "pending" || m.approval_status === "needs_clarification") ?? [];
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-members"] });
+
+  const approve = async (id: string) => {
     try {
-      await adminSetApproved({ data: { id, approved } });
-      toast.success(approved ? "Approved" : "Revoked");
+      await adminApproveMember({ data: { id } });
+      toast.success("Member approved!");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+  const reject = async (id: string) => {
+    try {
+      await adminRejectMember({ data: { id, reason } });
+      toast.success("Member rejected");
+      setReasonFor(null);
+      setReason("");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+  const clarify = async (id: string) => {
+    try {
+      await adminMarkNeedsClarification({ data: { id, reason } });
+      toast.success("Marked as needs clarification");
+      setReasonFor(null);
+      setReason("");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+  const remove = async (id: string) => {
+    try {
+      await adminDeleteMember({ data: { id } });
+      toast.success("Signup request deleted");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
+  if (pending.length === 0) {
+    return <p className="text-muted-foreground">No pending members. All caught up! 🎉</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {pending.map((m) => (
+        <div key={m.id} className="rounded-lg border border-border bg-card p-4">
+          <div className="flex flex-wrap justify-between gap-3 items-start">
+            <div className="flex gap-3 items-center">
+              {m.photo_url && (
+                <img src={m.photo_url} alt={m.full_name ?? ""} className="h-12 w-12 rounded-full object-cover" />
+              )}
+              <div>
+                <p className="font-semibold">
+                  {m.full_name}{" "}
+                  {m.approval_status === "needs_clarification" && (
+                    <span className="text-xs text-amber-600 ml-1">[needs clarification]</span>
+                  )}
+                </p>
+                <p className="text-sm text-muted-foreground">{m.email}</p>
+                <p className="text-sm text-muted-foreground">{m.phone || m.whatsapp || "no phone"} · {m.location || "no city"} · {m.profession || "no profession"}</p>
+                <p className="text-xs text-muted-foreground mt-1">Signed up {format(new Date(m.created_at), "PPP")}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => approve(m.id)} className="h-10">Approve</Button>
+              <Button onClick={() => setReasonFor(reasonFor === m.id ? null : m.id)} variant="outline" className="h-10">Reject</Button>
+              <Button onClick={() => remove(m.id)} variant="ghost" className="h-10 text-destructive">Delete</Button>
+            </div>
+          </div>
+          {reasonFor === m.id && (
+            <div className="mt-3 flex flex-wrap gap-2 items-center">
+              <Input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Reason (optional)"
+                className="h-10 max-w-xs"
+              />
+              <Button onClick={() => reject(m.id)} variant="destructive" className="h-10">Confirm reject</Button>
+              <Button onClick={() => clarify(m.id)} variant="outline" className="h-10">Ask for clarification</Button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ApprovedMembersTab() {
+  const qc = useQueryClient();
+  const { data } = useAdminMembers();
+  const [search, setSearch] = useState("");
+  const { data: adminData } = useQuery({ queryKey: ["admin-admins"], queryFn: () => adminListAdmins() });
+
+  const approved = (data?.filter((m) => m.approval_status === "approved") ?? []).filter((m) => {
+    const q = search.toLowerCase();
+    if (!q) return true;
+    return (
+      (m.full_name ?? "").toLowerCase().includes(q) ||
+      (m.location ?? "").toLowerCase().includes(q) ||
+      (m.profession ?? "").toLowerCase().includes(q)
+    );
+  });
+  const adminIds = new Set((adminData ?? []).map((a) => a.id));
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["admin-members"] });
+    qc.invalidateQueries({ queryKey: ["admin-admins"] });
+  };
+
+  const promote = async (id: string) => {
+    try {
+      await adminPromoteToAdmin({ data: { id } });
+      toast.success("Promoted to admin");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+  const disable = async (id: string) => {
+    try {
+      await adminRejectMember({ data: { id, reason: "Disabled by admin" } });
+      toast.success("Member disabled");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
+  return (
+    <div>
+      <Input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by name, city or profession…"
+        className="h-11 mb-4 max-w-md"
+      />
+      <div className="space-y-3">
+        {approved.length === 0 && <p className="text-muted-foreground">No approved members found.</p>}
+        {approved.map((m) => (
+          <div key={m.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
+            <div>
+              <p className="font-semibold">
+                {m.full_name} {adminIds.has(m.id) && <span className="text-xs text-gold ml-2">★ Admin</span>}
+              </p>
+              <p className="text-sm text-muted-foreground">{m.email}</p>
+              <p className="text-sm text-muted-foreground">{m.location || "—"} · {m.profession || "—"}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!adminIds.has(m.id) && (
+                <Button onClick={() => promote(m.id)} variant="outline" className="h-10">Make Admin</Button>
+              )}
+              <Button onClick={() => disable(m.id)} variant="outline" className="h-10 text-destructive">Disable</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RejectedMembersTab() {
+  const qc = useQueryClient();
+  const { data } = useAdminMembers();
+  const rejected = data?.filter((m) => m.approval_status === "rejected") ?? [];
+
+  const reconsider = async (id: string) => {
+    try {
+      await adminApproveMember({ data: { id } });
+      toast.success("Member approved");
       qc.invalidateQueries({ queryKey: ["admin-members"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
   };
+
+  if (rejected.length === 0) {
+    return <p className="text-muted-foreground">No rejected members.</p>;
+  }
+
   return (
     <div className="space-y-3">
-      {data?.map((m) => (
+      {rejected.map((m) => (
         <div key={m.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
           <div>
-            <p className="font-semibold">{m.full_name} {m.approved && <span className="text-xs text-gold ml-2">✓ Approved</span>}</p>
+            <p className="font-semibold">{m.full_name}</p>
             <p className="text-sm text-muted-foreground">{m.email}</p>
+            {m.rejection_reason && <p className="text-sm text-destructive mt-1">Reason: {m.rejection_reason}</p>}
           </div>
-          <Button onClick={() => toggle(m.id, !m.approved)} variant={m.approved ? "outline" : "default"}>
-            {m.approved ? "Revoke access" : "Approve member"}
-          </Button>
+          <Button onClick={() => reconsider(m.id)} variant="outline" className="h-10">Reconsider & approve</Button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AdminsTab() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["admin-admins"], queryFn: () => adminListAdmins() });
+  const [email, setEmail] = useState("");
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-admins"] });
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await adminAddAdminByEmail({ data: { email } });
+      toast.success("Admin added");
+      setEmail("");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+  const remove = async (id: string) => {
+    try {
+      await adminDemoteAdmin({ data: { id } });
+      toast.success("Admin removed");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
+  return (
+    <div>
+      <form onSubmit={add} className="flex flex-wrap gap-2 mb-6">
+        <Input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="member@email.com"
+          required
+          className="h-11 max-w-xs"
+        />
+        <Button type="submit" className="h-11">Add admin by email</Button>
+      </form>
+      <div className="space-y-3">
+        {data?.map((a) => (
+          <div key={a.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
+            <div>
+              <p className="font-semibold">{a.full_name}</p>
+              <p className="text-sm text-muted-foreground">{a.email}</p>
+            </div>
+            <Button onClick={() => remove(a.id)} variant="outline" className="h-10 text-destructive">Remove admin</Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

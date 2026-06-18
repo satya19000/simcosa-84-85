@@ -15,10 +15,11 @@ export const Route = createFileRoute("/_authenticated/profile")({
 });
 
 function ProfilePage() {
-  const { profile, user, refresh } = useAuth();
+  const { profile, user, isAdmin, refresh } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({
     full_name: "", phone: "", whatsapp: "", location: "", profession: "", bio: "",
+    spouse_name: "", clinic_or_hospital: "", country_state: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -30,6 +31,9 @@ function ProfilePage() {
       location: profile.location ?? "",
       profession: profile.profession ?? "",
       bio: profile.bio ?? "",
+      spouse_name: profile.spouse_name ?? "",
+      clinic_or_hospital: profile.clinic_or_hospital ?? "",
+      country_state: profile.country_state ?? "",
     });
   }, [profile]);
 
@@ -40,13 +44,31 @@ function ProfilePage() {
       await updateMyProfile({ data: form });
       toast.success("Profile updated! 🎉");
       await refresh();
-      router.navigate({ to: "/directory" });
+      if (isAdmin || profile?.approval_status === "approved") {
+        router.navigate({ to: "/directory" });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update profile");
     } finally {
       setSaving(false);
     }
   };
+
+  const statusBanner = (() => {
+    if (isAdmin || profile?.approval_status === "approved" || !profile) return null;
+    const status = profile.approval_status;
+    const text =
+      status === "rejected"
+        ? "Your membership request was not approved. Please contact admin."
+        : status === "needs_clarification"
+          ? "Admin needs more details from you. Please update your profile below."
+          : "Your account is awaiting admin approval.";
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-6 text-amber-800 text-sm font-medium">
+        {text}
+      </div>
+    );
+  })();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
@@ -60,6 +82,7 @@ function ProfilePage() {
       </div>
 
       <div className="mx-auto max-w-2xl px-4 sm:px-6 py-8">
+        {statusBanner}
         {/* Avatar */}
         <div className="bg-white rounded-2xl border border-amber-100 shadow-sm p-6 mb-6 flex items-center gap-4">
           <div className="h-20 w-20 rounded-full bg-amber-100 flex items-center justify-center font-display text-3xl font-bold text-amber-700 shrink-0">
@@ -104,6 +127,22 @@ function ProfilePage() {
               <Label className="font-semibold text-gray-700 flex items-center gap-2"><Briefcase className="h-4 w-4 text-amber-500" />Profession / Speciality</Label>
               <Input value={form.profession} onChange={e => setForm({ ...form, profession: e.target.value })} placeholder="Cardiologist, Hyderabad" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
             </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="font-semibold text-gray-700">Spouse name</Label>
+              <Input value={form.spouse_name} onChange={e => setForm({ ...form, spouse_name: e.target.value })} className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+            </div>
+            <div>
+              <Label className="font-semibold text-gray-700">Clinic / Hospital</Label>
+              <Input value={form.clinic_or_hospital} onChange={e => setForm({ ...form, clinic_or_hospital: e.target.value })} className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+            </div>
+          </div>
+
+          <div>
+            <Label className="font-semibold text-gray-700">Current country / state</Label>
+            <Input value={form.country_state} onChange={e => setForm({ ...form, country_state: e.target.value })} className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
           </div>
 
           <div>

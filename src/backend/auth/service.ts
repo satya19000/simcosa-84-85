@@ -1,6 +1,8 @@
 import { query, withTransaction } from "../db";
 import type { AuthClaims } from "./firebase";
 
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "needs_clarification";
+
 export interface ProfileRow {
   id: string;
   full_name: string;
@@ -11,7 +13,16 @@ export interface ProfileRow {
   location: string | null;
   profession: string | null;
   bio: string | null;
+  spouse_name: string | null;
+  clinic_or_hospital: string | null;
+  country_state: string | null;
+  batch_confirmed: boolean;
   approved: boolean;
+  approval_status: ApprovalStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
 }
 
 export interface AuthUser {
@@ -23,7 +34,9 @@ export interface AuthUser {
 }
 
 // Upsert the authenticated user, and ensure a member profile + role exist.
-// New users are immediately approved (no admin-approval gating).
+// New profiles start out pending — an admin must approve them before they
+// can access member-only content. ON CONFLICT DO NOTHING means this never
+// resets an existing member's approval state on subsequent logins.
 export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
   const id = claims.sub;
   const email = claims.email ?? null;
@@ -56,8 +69,8 @@ export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
     );
 
     await c.query(
-      `INSERT INTO profiles (id, full_name, email, photo_url, approved)
-       VALUES ($1, $2, $3, $4, true)
+      `INSERT INTO profiles (id, full_name, email, photo_url, approved, approval_status)
+       VALUES ($1, $2, $3, $4, false, 'pending')
        ON CONFLICT (id) DO NOTHING`,
       [id, fullName, email, image],
     );
@@ -70,10 +83,13 @@ export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
   });
 }
 
+export const PROFILE_COLUMNS = `id, full_name, photo_url, phone, whatsapp, email, location, profession, bio,
+  spouse_name, clinic_or_hospital, country_state, batch_confirmed, approved, approval_status,
+  approved_by, approved_at, rejection_reason, created_at`;
+
 export async function getProfile(userId: string): Promise<ProfileRow | null> {
   const res = await query<ProfileRow>(
-    `SELECT id, full_name, photo_url, phone, whatsapp, email, location, profession, bio, approved
-     FROM profiles WHERE id = $1`,
+    `SELECT ${PROFILE_COLUMNS} FROM profiles WHERE id = $1`,
     [userId],
   );
   return res.rows[0] ?? null;

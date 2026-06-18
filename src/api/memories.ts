@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth } from "../backend/auth/middleware";
+import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
 export interface MemoryComment {
@@ -22,7 +22,7 @@ export interface MemoryRow {
 }
 
 export const listMemories = createServerFn({ method: "GET" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .handler(async (): Promise<MemoryRow[]> => {
     const res = await query<MemoryRow>(
       `SELECT
@@ -50,7 +50,7 @@ export const listMemories = createServerFn({ method: "GET" })
   });
 
 export const postMemory = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { title?: string; body: string }) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     await query(
@@ -61,7 +61,7 @@ export const postMemory = createServerFn({ method: "POST" })
   });
 
 export const toggleLike = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { memoryId: string; liked: boolean }) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     if (data.liked) {
@@ -80,7 +80,7 @@ export const toggleLike = createServerFn({ method: "POST" })
   });
 
 export const addComment = createServerFn({ method: "POST" })
-  .middleware([requireAuth])
+  .middleware([requireApproved])
   .inputValidator((d: { memoryId: string; body: string }) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     await query(

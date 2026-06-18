@@ -11,6 +11,8 @@ import {
 } from "firebase/auth";
 import { getFirebaseAuth, googleProvider } from "@/lib/firebase";
 
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "needs_clarification";
+
 export interface ProfileRow {
   id: string;
   full_name: string;
@@ -21,7 +23,16 @@ export interface ProfileRow {
   location: string | null;
   profession: string | null;
   bio: string | null;
+  spouse_name: string | null;
+  clinic_or_hospital: string | null;
+  country_state: string | null;
+  batch_confirmed: boolean;
   approved: boolean;
+  approval_status: ApprovalStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
 }
 
 export interface AuthUser {
@@ -32,17 +43,35 @@ export interface AuthUser {
   profile_image_url: string | null;
 }
 
+export interface SignupExtra {
+  phone?: string;
+  whatsapp?: string;
+  location?: string;
+  profession?: string;
+  bio?: string;
+  spouse_name?: string;
+  clinic_or_hospital?: string;
+  country_state?: string;
+  batch_confirmed?: boolean;
+}
+
 interface AuthCtx {
   user: AuthUser | null;
   profile: ProfileRow | null;
   isAdmin: boolean;
   isApproved: boolean;
   loading: boolean;
-  refresh: () => Promise<void>;
-  signInEmail: (email: string, password: string) => Promise<string>;
-  signUpEmail: (email: string, password: string, fullName?: string) => Promise<string>;
+  refresh: () => Promise<AuthResponse | null>;
+  signInEmail: (email: string, password: string) => Promise<{ name: string; profile: ProfileRow | null }>;
+  signUpEmail: (
+    email: string,
+    password: string,
+    fullName: string,
+    extra?: SignupExtra,
+    photoFile?: File,
+  ) => Promise<{ name: string; profile: ProfileRow | null }>;
   resetPassword: (email: string) => Promise<void>;
-  signInGoogle: () => Promise<string>;
+  signInGoogle: () => Promise<{ name: string; profile: ProfileRow | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -75,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAdmin(false);
   };
 
-  const load = async () => {
+  const load = async (): Promise<AuthResponse | null> => {
     try {
       const res = await fetch("/api/auth/user", { credentials: "include" });
       const data: AuthResponse = await res.json();
@@ -86,8 +115,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         clearState();
       }
+      return data;
     } catch {
       clearState();
+      return null;
+    }
+  };
+
+  // Exchanges a fresh Firebase ID token for a server session cookie. Awaited
+  // directly (rather than relying solely on the onIdTokenChanged listener
+  // below) so sign-in/sign-up flows can deterministically know the session
+  // exists before reading approval status or saving extra signup details.
+  const exchangeSession = async (fbUser: FirebaseUser) => {
+    const idToken = await fbUser.getIdToken();
+    const res = await fetch("/api/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ idToken }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      console.error("[auth] session exchange failed:", res.status, detail);
+      throw new Error(`Session exchange failed (${res.status})`);
     }
   };
 
@@ -125,21 +175,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = async () => {
-    await load();
+    return load();
   };
 
   const signInEmail = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
-    return welcomeNameFor(cred.user);
+    await exchangeSession(cred.user);
+    const data = await load();
+    return { name: welcomeNameFor(cred.user), profile: data?.profile ?? null };
   };
 
-  const signUpEmail = async (email: string, password: string, fullName?: string) => {
+  const signUpEmail = async (
+    email: string,
+    password: string,
+    fullName: string,
+    extra?: SignupExtra,
+    photoFile?: File,
+  ) => {
     const cred = await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
     const trimmedName = fullName?.trim();
     if (trimmedName) {
       await updateProfile(cred.user, { displayName: trimmedName });
     }
-    return trimmedName || welcomeNameFor(cred.user);
+    await exchangeSession(cred.user);
+    if (extra) {
+      try {
+        const { updateMyProfile } = await import("@/api/profile");
+        await updateMyProfile({
+          data: { full_name: trimmedName || welcomeNameFor(cred.user), ...extra },
+        });
+      } catch (err) {
+        console.error("[auth] failed to save signup details:", err);
+      }
+    }
+    if (photoFile) {
+      try {
+        const { uploadProfilePhoto } = await import("@/api/profile");
+        const fd = new FormData();
+        fd.set("file", photoFile);
+        await uploadProfilePhoto({ data: fd });
+      } catch (err) {
+        console.error("[auth] failed to upload profile photo:", err);
+      }
+    }
+    const data = await load();
+    return { name: trimmedName || welcomeNameFor(cred.user), profile: data?.profile ?? null };
   };
 
   const resetPassword = async (email: string) => {
@@ -148,7 +228,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInGoogle = async () => {
     const cred = await signInWithPopup(getFirebaseAuth(), googleProvider);
-    return welcomeNameFor(cred.user);
+    await exchangeSession(cred.user);
+    const data = await load();
+    return { name: welcomeNameFor(cred.user), profile: data?.profile ?? null };
   };
 
   const signOut = async () => {
@@ -161,7 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         isAdmin,
-        isApproved: !!profile?.approved,
+        isApproved: profile?.approval_status === "approved",
         loading,
         refresh,
         signInEmail,

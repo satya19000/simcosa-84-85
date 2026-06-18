@@ -15,6 +15,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSupportRouteImport } from './routes/_authenticated/support'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as AuthenticatedPendingApprovalRouteImport } from './routes/_authenticated/pending-approval'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedGalleryRouteImport } from './routes/_authenticated/gallery'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated/events'
@@ -54,6 +55,12 @@ const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedPendingApprovalRoute =
+  AuthenticatedPendingApprovalRouteImport.update({
+    id: '/pending-approval',
+    path: '/pending-approval',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMemoriesRoute = AuthenticatedMemoriesRouteImport.update({
   id: '/memories',
   path: '/memories',
@@ -113,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/events': typeof AuthenticatedEventsRoute
   '/gallery': typeof AuthenticatedGalleryRoute
   '/memories': typeof AuthenticatedMemoriesRoute
+  '/pending-approval': typeof AuthenticatedPendingApprovalRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/support': typeof AuthenticatedSupportRoute
   '/blogs/$id': typeof AuthenticatedBlogsIdRoute
@@ -129,6 +137,7 @@ export interface FileRoutesByTo {
   '/events': typeof AuthenticatedEventsRoute
   '/gallery': typeof AuthenticatedGalleryRoute
   '/memories': typeof AuthenticatedMemoriesRoute
+  '/pending-approval': typeof AuthenticatedPendingApprovalRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/support': typeof AuthenticatedSupportRoute
   '/blogs/$id': typeof AuthenticatedBlogsIdRoute
@@ -147,6 +156,7 @@ export interface FileRoutesById {
   '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/gallery': typeof AuthenticatedGalleryRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
+  '/_authenticated/pending-approval': typeof AuthenticatedPendingApprovalRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/support': typeof AuthenticatedSupportRoute
   '/_authenticated/blogs/$id': typeof AuthenticatedBlogsIdRoute
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
     | '/events'
     | '/gallery'
     | '/memories'
+    | '/pending-approval'
     | '/profile'
     | '/support'
     | '/blogs/$id'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/events'
     | '/gallery'
     | '/memories'
+    | '/pending-approval'
     | '/profile'
     | '/support'
     | '/blogs/$id'
@@ -198,6 +210,7 @@ export interface FileRouteTypes {
     | '/_authenticated/events'
     | '/_authenticated/gallery'
     | '/_authenticated/memories'
+    | '/_authenticated/pending-approval'
     | '/_authenticated/profile'
     | '/_authenticated/support'
     | '/_authenticated/blogs/$id'
@@ -252,6 +265,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof AuthenticatedProfileRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/pending-approval': {
+      id: '/_authenticated/pending-approval'
+      path: '/pending-approval'
+      fullPath: '/pending-approval'
+      preLoaderRoute: typeof AuthenticatedPendingApprovalRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/memories': {
@@ -340,6 +360,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedGalleryRoute: typeof AuthenticatedGalleryRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
+  AuthenticatedPendingApprovalRoute: typeof AuthenticatedPendingApprovalRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedSupportRoute: typeof AuthenticatedSupportRoute
 }
@@ -353,6 +374,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedGalleryRoute: AuthenticatedGalleryRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
+  AuthenticatedPendingApprovalRoute: AuthenticatedPendingApprovalRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedSupportRoute: AuthenticatedSupportRoute,
 }
