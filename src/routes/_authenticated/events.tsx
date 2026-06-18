@@ -60,15 +60,23 @@ function Events() {
     queryFn: () => listMyRsvps(),
   });
 
-  const { data: counts } = useQuery({
+  const { data: rawCounts } = useQuery({
     queryKey: ["rsvp-counts"],
     queryFn: () => listRsvpCounts(),
   });
 
+  const counts: Record<string, { attending: number; maybe: number; not_attending: number }> = {};
+  for (const r of rawCounts ?? []) {
+    const c = (counts[r.event_id] ??= { attending: 0, maybe: 0, not_attending: 0 });
+    if (r.status === "attending" || r.status === "maybe" || r.status === "not_attending") {
+      c[r.status]++;
+    }
+  }
+
   const setRsvp = async (eventId: string, status: Status) => {
     if (!user) return;
     try {
-      await setRsvpFn({ data: { event_id: eventId, status } });
+      await setRsvpFn({ data: { eventId, status } });
       toast.success(status === "attending" ? "Great! You're attending 🎉" : "RSVP updated");
       qc.invalidateQueries({ queryKey: ["my-rsvps"] });
       qc.invalidateQueries({ queryKey: ["rsvp-counts"] });
