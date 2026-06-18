@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Users, Calendar, Camera, BookOpen, MessageCircle, Heart,
-  HelpCircle, Trophy, ArrowRight, Star, MapPin, Briefcase, Quote
+  HelpCircle, Trophy, ArrowRight, Star, MapPin, Briefcase, Quote, PenLine
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -29,6 +29,7 @@ const FEATURES = [
   { icon: Calendar, label: "Events & Reunions", desc: "Stay updated on upcoming events.", color: "bg-emerald-50 text-emerald-600", link: "/events" },
   { icon: Camera, label: "Photo Gallery", desc: "Browse old memories and recent moments.", color: "bg-sky-50 text-sky-600", link: "/gallery" },
   { icon: BookOpen, label: "Memories Wall", desc: "Share your stories and cherished memories.", color: "bg-purple-50 text-purple-600", link: "/memories" },
+  { icon: PenLine, label: "Blogs", desc: "Read and write opinions, poems and articles.", color: "bg-indigo-50 text-indigo-600", link: "/blogs" },
   { icon: MessageCircle, label: "Batch Chat", desc: "Chat with batchmates in real time.", color: "bg-rose-50 text-rose-600", link: "/announcements" },
   { icon: Heart, label: "Donations", desc: "Support our batch community fund.", color: "bg-pink-50 text-pink-600", link: "/donations" },
   { icon: HelpCircle, label: "Help & Support", desc: "Reach out privately for any support.", color: "bg-orange-50 text-orange-600", link: "/support" },
