@@ -1,10 +1,12 @@
 import { query } from "./db";
 import { parseCookies } from "./auth/cookies";
 import { getSession, SESSION_COOKIE } from "./auth/session";
+import { getProfile, isAdmin } from "./auth/service";
 
-// GET /api/profile-photo/:userId — stream a member's stored profile photo to
-// logged-in members (visible to pending members too, since admins need to
-// see signup photos and members need to see their own preview).
+// GET /api/profile-photo/:userId — stream a member's stored profile photo.
+// A user can always view their own photo (signup preview); admins can view
+// any photo (to review pending signups); everyone else must be an approved
+// member to view other members' photos.
 export async function serveProfilePhoto(request: Request): Promise<Response | null> {
   const { pathname } = new URL(request.url);
   const match = pathname.match(/^\/api\/profile-photo\/([^/]+)$/);
@@ -15,6 +17,17 @@ export async function serveProfilePhoto(request: Request): Promise<Response | nu
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const userId = decodeURIComponent(match[1]);
+
+  if (session.userId !== userId) {
+    const [profile, admin] = await Promise.all([
+      getProfile(session.userId),
+      isAdmin(session.userId),
+    ]);
+    if (!admin && profile?.approval_status !== "approved") {
+      return new Response("Forbidden", { status: 403 });
+    }
+  }
+
   const res = await query<{ data: Buffer | null; mime: string | null }>(
     `SELECT data, mime FROM profile_photos WHERE user_id = $1`,
     [userId],

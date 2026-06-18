@@ -1,8 +1,9 @@
 import { query } from "./db";
 import { parseCookies } from "./auth/cookies";
 import { getSession, SESSION_COOKIE } from "./auth/session";
+import { getProfile, isAdmin } from "./auth/service";
 
-// GET /api/gallery/:id — stream stored media bytes to logged-in members.
+// GET /api/gallery/:id — stream stored media bytes to approved members.
 export async function serveGallery(request: Request): Promise<Response | null> {
   const { pathname } = new URL(request.url);
   const match = pathname.match(/^\/api\/gallery\/([^/]+)$/);
@@ -11,6 +12,14 @@ export async function serveGallery(request: Request): Promise<Response | null> {
   const cookies = parseCookies(request.headers.get("cookie"));
   const session = await getSession(cookies[SESSION_COOKIE]);
   if (!session) return new Response("Unauthorized", { status: 401 });
+
+  const [profile, admin] = await Promise.all([
+    getProfile(session.userId),
+    isAdmin(session.userId),
+  ]);
+  if (!admin && profile?.approval_status !== "approved") {
+    return new Response("Forbidden", { status: 403 });
+  }
 
   const id = decodeURIComponent(match[1]);
   const res = await query<{ data: Buffer | null; mime: string | null }>(

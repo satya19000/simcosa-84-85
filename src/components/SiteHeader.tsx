@@ -5,11 +5,11 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
 const publicLinks = [
-  { to: "/", label: "Home" },
   { to: "/about", label: "About" },
 ];
 
 const memberLinks = [
+  { to: "/home", label: "Home", icon: Users },
   { to: "/directory", label: "Members", icon: Users },
   { to: "/gallery", label: "Gallery", icon: Camera },
   { to: "/events", label: "Events", icon: Calendar },
@@ -21,20 +21,25 @@ const memberLinks = [
 ];
 
 export function SiteHeader() {
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
-  const links = [
-    ...publicLinks,
-    ...(user ? memberLinks.map(l => ({ to: l.to, label: l.label })) : []),
-    ...(isAdmin ? [{ to: "/admin", label: "Admin" }] : []),
-  ];
+  const isApproved = profile?.approval_status === "approved";
+
+  const links = !user
+    ? publicLinks
+    : isAdmin || isApproved
+      ? [
+          ...memberLinks.map(l => ({ to: l.to, label: l.label })),
+          ...(isAdmin ? [{ to: "/admin", label: "Admin" }] : []),
+        ]
+      : [{ to: "/pending-approval", label: "Pending Approval" }];
 
   const onSignOut = async () => {
     await signOut();
     setOpen(false);
-    router.navigate({ to: "/" });
+    router.navigate({ to: "/auth" });
   };
 
   return (
@@ -42,7 +47,7 @@ export function SiteHeader() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="flex h-16 items-center justify-between gap-4">
           {/* Logo & Brand */}
-          <Link to="/" className="flex items-center gap-3 min-w-0 shrink-0">
+          <Link to={user ? "/home" : "/"} className="flex items-center gap-3 min-w-0 shrink-0">
             <img
               src="/assets/college-logo.png"
               alt="SIMCOSA"
@@ -129,6 +134,10 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
+  const { user, profile, isAdmin } = useAuth();
+  const isApproved = profile?.approval_status === "approved";
+  const showMemberLinks = user && (isAdmin || isApproved);
+
   return (
     <footer className="bg-gray-900 text-gray-300 mt-0">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-12">
@@ -154,12 +163,16 @@ export function SiteFooter() {
             <ul className="space-y-2 text-sm">
               {[
                 { to: "/about", label: "About Our Batch" },
-                { to: "/auth", label: "Login / Signup" },
-                { to: "/directory", label: "Members Directory" },
-                { to: "/gallery", label: "Photo Gallery" },
-                { to: "/events", label: "Events & Reunions" },
-                { to: "/memories", label: "Memories Wall" },
-                { to: "/blogs", label: "Blogs" },
+                ...(!user ? [{ to: "/auth", label: "Login / Signup" }] : []),
+                ...(showMemberLinks
+                  ? [
+                      { to: "/directory", label: "Members Directory" },
+                      { to: "/gallery", label: "Photo Gallery" },
+                      { to: "/events", label: "Events & Reunions" },
+                      { to: "/memories", label: "Memories Wall" },
+                      { to: "/blogs", label: "Blogs" },
+                    ]
+                  : []),
               ].map(l => (
                 <li key={l.to}>
                   <Link to={l.to} className="text-gray-400 hover:text-amber-400 transition-colors">→ {l.label}</Link>
@@ -190,15 +203,17 @@ export function SiteFooter() {
           </div>
 
           {/* For Admins */}
-          <div>
-            <h4 className="text-white font-bold mb-4 text-base">For Admins</h4>
-            <p className="text-sm text-gray-400 mb-4">Admin login to manage members, content and portal settings.</p>
-            <Link to="/auth">
-              <Button variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white text-sm">
-                Admin Login
-              </Button>
-            </Link>
-          </div>
+          {!user && (
+            <div>
+              <h4 className="text-white font-bold mb-4 text-base">Members & Admins</h4>
+              <p className="text-sm text-gray-400 mb-4">Sign in to access the private portal and admin tools.</p>
+              <Link to="/auth">
+                <Button variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white text-sm">
+                  Sign In
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
 
         <div className="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">

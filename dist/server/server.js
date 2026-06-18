@@ -292,6 +292,13 @@ async function serveGallery(request) {
   const cookies = parseCookies(request.headers.get("cookie"));
   const session = await getSession(cookies[SESSION_COOKIE]);
   if (!session) return new Response("Unauthorized", { status: 401 });
+  const [profile, admin] = await Promise.all([
+    getProfile(session.userId),
+    isAdmin(session.userId)
+  ]);
+  if (!admin && profile?.approval_status !== "approved") {
+    return new Response("Forbidden", { status: 403 });
+  }
   const id = decodeURIComponent(match[1]);
   const res = await query(
     `SELECT data, mime FROM gallery_items WHERE id = $1`,
@@ -314,6 +321,13 @@ async function serveBlogImage(request) {
   const cookies = parseCookies(request.headers.get("cookie"));
   const session = await getSession(cookies[SESSION_COOKIE]);
   if (!session) return new Response("Unauthorized", { status: 401 });
+  const [profile, admin] = await Promise.all([
+    getProfile(session.userId),
+    isAdmin(session.userId)
+  ]);
+  if (!admin && profile?.approval_status !== "approved") {
+    return new Response("Forbidden", { status: 403 });
+  }
   const id = decodeURIComponent(match[1]);
   const res = await query(
     `SELECT image_data, image_mime FROM blogs WHERE id = $1`,
@@ -337,6 +351,15 @@ async function serveProfilePhoto(request) {
   const session = await getSession(cookies[SESSION_COOKIE]);
   if (!session) return new Response("Unauthorized", { status: 401 });
   const userId = decodeURIComponent(match[1]);
+  if (session.userId !== userId) {
+    const [profile, admin] = await Promise.all([
+      getProfile(session.userId),
+      isAdmin(session.userId)
+    ]);
+    if (!admin && profile?.approval_status !== "approved") {
+      return new Response("Forbidden", { status: 403 });
+    }
+  }
   const res = await query(
     `SELECT data, mime FROM profile_photos WHERE user_id = $1`,
     [userId]
@@ -354,7 +377,7 @@ async function serveProfilePhoto(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-vr8a0_bb.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-D92VZGxk.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }

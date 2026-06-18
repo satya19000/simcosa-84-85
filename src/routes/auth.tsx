@@ -84,13 +84,13 @@ function navigateForStatus(
     router.navigate({ to: "/pending-approval" });
   } else {
     queueWelcomeToast(name, "approved");
-    router.navigate({ to: "/" });
+    router.navigate({ to: "/home" });
   }
 }
 
 function AuthPage() {
   const router = useRouter();
-  const { user, loading, signInEmail, signUpEmail, resetPassword, signInGoogle } = useAuth();
+  const { user, profile, isAdmin, loading, signInEmail, signUpEmail, resetPassword, signInGoogle } = useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -111,8 +111,14 @@ function AuthPage() {
   const [googleBusy, setGoogleBusy] = useState(false);
 
   useEffect(() => {
-    if (user) router.navigate({ to: "/" });
-  }, [user, router]);
+    if (!user) return;
+    const isApproved = profile?.approval_status === "approved";
+    if (isAdmin || isApproved) {
+      router.navigate({ to: "/home" });
+    } else {
+      router.navigate({ to: "/pending-approval" });
+    }
+  }, [user, profile, isAdmin, router]);
 
   const switchMode = (next: Mode) => {
     setMode(next);

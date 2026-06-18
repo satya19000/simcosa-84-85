@@ -17,6 +17,7 @@ import { Route as AuthenticatedSupportRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedPendingApprovalRouteImport } from './routes/_authenticated/pending-approval'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
+import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 import { Route as AuthenticatedGalleryRouteImport } from './routes/_authenticated/gallery'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated/events'
 import { Route as AuthenticatedDonationsRouteImport } from './routes/_authenticated/donations'
@@ -64,6 +65,11 @@ const AuthenticatedPendingApprovalRoute =
 const AuthenticatedMemoriesRoute = AuthenticatedMemoriesRouteImport.update({
   id: '/memories',
   path: '/memories',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedHomeRoute = AuthenticatedHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedGalleryRoute = AuthenticatedGalleryRouteImport.update({
@@ -119,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/donations': typeof AuthenticatedDonationsRoute
   '/events': typeof AuthenticatedEventsRoute
   '/gallery': typeof AuthenticatedGalleryRoute
+  '/home': typeof AuthenticatedHomeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/pending-approval': typeof AuthenticatedPendingApprovalRoute
   '/profile': typeof AuthenticatedProfileRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/donations': typeof AuthenticatedDonationsRoute
   '/events': typeof AuthenticatedEventsRoute
   '/gallery': typeof AuthenticatedGalleryRoute
+  '/home': typeof AuthenticatedHomeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/pending-approval': typeof AuthenticatedPendingApprovalRoute
   '/profile': typeof AuthenticatedProfileRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/_authenticated/donations': typeof AuthenticatedDonationsRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/gallery': typeof AuthenticatedGalleryRoute
+  '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/pending-approval': typeof AuthenticatedPendingApprovalRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
@@ -174,6 +183,7 @@ export interface FileRouteTypes {
     | '/donations'
     | '/events'
     | '/gallery'
+    | '/home'
     | '/memories'
     | '/pending-approval'
     | '/profile'
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
     | '/donations'
     | '/events'
     | '/gallery'
+    | '/home'
     | '/memories'
     | '/pending-approval'
     | '/profile'
@@ -209,6 +220,7 @@ export interface FileRouteTypes {
     | '/_authenticated/donations'
     | '/_authenticated/events'
     | '/_authenticated/gallery'
+    | '/_authenticated/home'
     | '/_authenticated/memories'
     | '/_authenticated/pending-approval'
     | '/_authenticated/profile'
@@ -279,6 +291,13 @@ declare module '@tanstack/react-router' {
       path: '/memories'
       fullPath: '/memories'
       preLoaderRoute: typeof AuthenticatedMemoriesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/home': {
+      id: '/_authenticated/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof AuthenticatedHomeRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/gallery': {
@@ -359,6 +378,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDonationsRoute: typeof AuthenticatedDonationsRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedGalleryRoute: typeof AuthenticatedGalleryRoute
+  AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
   AuthenticatedPendingApprovalRoute: typeof AuthenticatedPendingApprovalRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
@@ -373,6 +393,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDonationsRoute: AuthenticatedDonationsRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedGalleryRoute: AuthenticatedGalleryRoute,
+  AuthenticatedHomeRoute: AuthenticatedHomeRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
   AuthenticatedPendingApprovalRoute: AuthenticatedPendingApprovalRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
