@@ -5,6 +5,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
+import { listMemories, toggleLike as toggleLikeFn } from "@/api/memories";
+import { useAuth } from "@/lib/auth";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 
 export const Route = createFileRoute("/_authenticated/home")({
@@ -62,6 +67,34 @@ const TIMELINE = [
 
 function Home() {
   const [lb, setLb] = useState<{ images: LightboxImage[]; index: number } | null>(null);
+  const { user, profile, isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const canInteract = !!user && (isAdmin || profile?.approval_status === "approved");
+
+  const { data: memories } = useQuery({
+    queryKey: ["memories"],
+    queryFn: () => listMemories(),
+    enabled: canInteract,
+  });
+  const previewMemories = (memories ?? []).slice(0, 2);
+
+  const onToggleLike = async (memoryId: string, liked: boolean) => {
+    if (!user) {
+      toast.error("Please sign in");
+      return;
+    }
+    if (!canInteract) {
+      toast.error("Admin approval required");
+      return;
+    }
+    try {
+      await toggleLikeFn({ data: { memoryId, liked } });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
   return (
     <div className="overflow-x-hidden">
 
@@ -313,27 +346,45 @@ function Home() {
           </div>
 
           <div className="space-y-5">
-            {[
-              { name: "Dr. Vijaya Gopal", time: "2 days ago", text: "I still remember our first day in the anatomy lab — we were terrified but we laughed so much. Those days at Siddhartha shaped everything I became as a doctor.", likes: 24, comments: 8 },
-              { name: "Dr. Srilatha", time: "5 days ago", text: "The reunions we have every few years remind me why medicine wasn't just a career — it was a journey we took together. Missing everyone today. 💛", likes: 41, comments: 15 },
-            ].map(m => (
-              <div key={m.name} className="bg-white rounded-2xl p-6 shadow-sm border border-amber-100">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center font-display text-xl font-bold text-amber-700 shrink-0">
-                    {m.name.charAt(3)}
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-900">{m.name}</p>
-                    <p className="text-xs text-gray-400">{m.time}</p>
-                  </div>
-                </div>
-                <p className="text-gray-700 leading-relaxed">{m.text}</p>
-                <div className="mt-4 flex items-center gap-6 text-gray-400 text-sm">
-                  <span className="flex items-center gap-1.5 cursor-pointer hover:text-rose-500"><Heart className="h-4 w-4" /> {m.likes} Likes</span>
-                  <span className="flex items-center gap-1.5 cursor-pointer hover:text-amber-600"><MessageCircle className="h-4 w-4" /> {m.comments} Comments</span>
-                </div>
+            {previewMemories.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-amber-100 text-center text-gray-500">
+                {!user
+                  ? "Please sign in to view and share memories."
+                  : !canInteract
+                    ? "Admin approval required to view memories."
+                    : "No memories shared yet — be the first!"}
               </div>
-            ))}
+            )}
+            {previewMemories.map(m => {
+              const name = m.profiles?.full_name ?? "Batchmate";
+              const liked = !!(user && m.memory_likes.some((l) => l.user_id === user.id));
+              return (
+                <div key={m.id} className="bg-white rounded-2xl p-6 shadow-sm border border-amber-100">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center font-display text-xl font-bold text-amber-700 shrink-0">
+                      {name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900">{name}</p>
+                      <p className="text-xs text-gray-400">{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</p>
+                    </div>
+                  </div>
+                  <p className="text-gray-700 leading-relaxed">{m.body}</p>
+                  <div className="mt-4 flex items-center gap-6 text-gray-400 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => onToggleLike(m.id, liked)}
+                      className={`flex items-center gap-1.5 cursor-pointer hover:text-rose-500 ${liked ? "text-rose-500" : ""}`}
+                    >
+                      <Heart className={`h-4 w-4 ${liked ? "fill-rose-500" : ""}`} /> {m.memory_likes.length} Likes
+                    </button>
+                    <Link to="/memories" className="flex items-center gap-1.5 cursor-pointer hover:text-amber-600">
+                      <MessageCircle className="h-4 w-4" /> {m.memory_comments.length} Comments
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="text-center mt-8">

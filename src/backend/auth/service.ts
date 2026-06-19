@@ -1,5 +1,6 @@
 import { query, withTransaction } from "../db";
 import type { AuthClaims } from "./firebase";
+import { sendNewMemberAdminNotification } from "../email";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "needs_clarification";
 
@@ -47,7 +48,7 @@ export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
   const fullName =
     [firstName, lastName].filter(Boolean).join(" ").trim() || email || "Batchmate";
 
-  await withTransaction(async (c) => {
+  const isNewSignup = await withTransaction(async (c) => {
     // Reclaim the email from any leftover account (e.g. a pre-Firebase Replit
     // Auth row) that used the same email under a different id, so the unique
     // email constraint doesn't block this Firebase user. The stale row's
@@ -68,10 +69,11 @@ export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
       [id, email, firstName, lastName, image],
     );
 
-    await c.query(
+    const profileInsert = await c.query(
       `INSERT INTO profiles (id, full_name, email, photo_url, approved, approval_status)
        VALUES ($1, $2, $3, $4, false, 'pending')
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`,
       [id, fullName, email, image],
     );
 
@@ -80,7 +82,26 @@ export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
        ON CONFLICT (user_id, role) DO NOTHING`,
       [id],
     );
+
+    return profileInsert.rowCount! > 0;
   });
+
+  // Notify admins outside the transaction so a slow/failed email send can
+  // never block or roll back the signup itself.
+  if (isNewSignup) {
+    const admins = await query<{ email: string | null }>(
+      `SELECT u.email FROM user_roles ur JOIN users u ON u.id = ur.user_id WHERE ur.role = 'admin'`,
+    );
+    const adminEmails = admins.rows.map((r) => r.email).filter((e): e is string => !!e);
+    void sendNewMemberAdminNotification(adminEmails, {
+      name: fullName,
+      email,
+      mobile: null,
+      city: null,
+      profession: null,
+      signupTime: new Date(),
+    });
+  }
 }
 
 export const PROFILE_COLUMNS = `id, full_name, photo_url, phone, whatsapp, email, location, profession, bio,
