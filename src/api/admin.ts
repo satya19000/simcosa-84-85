@@ -182,7 +182,10 @@ export interface AdminImportRow {
   phone?: string;
   location?: string;
   profession?: string;
+  approval_status?: ApprovalStatus;
 }
+
+const VALID_APPROVAL_STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "needs_clarification"];
 
 export const adminImportMembers = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
@@ -196,13 +199,17 @@ export const adminImportMembers = createServerFn({ method: "POST" })
           skipped++;
           continue;
         }
+        const status =
+          row.approval_status && VALID_APPROVAL_STATUSES.includes(row.approval_status)
+            ? row.approval_status
+            : data.approval_status;
         await upsertManualMember(c, {
           full_name: row.full_name,
           email: row.email,
           phone: row.phone,
           location: row.location,
           profession: row.profession,
-          approval_status: data.approval_status,
+          approval_status: status,
         });
         imported++;
       }

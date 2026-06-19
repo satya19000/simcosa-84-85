@@ -65,6 +65,11 @@ const TIMELINE = [
   { year: "2025", label: "Grand Reunion", desc: "40 years together — the grandest celebration yet!" },
 ];
 
+const SAMPLE_MEMORIES = [
+  { name: "Dr. Vijaya Gopal", body: "Still remember our late-night study sessions before anatomy exams — those days shaped who we became." },
+  { name: "Dr. Srilatha", body: "The friendships we made in those college corridors have lasted a lifetime. Forever grateful for this batch." },
+];
+
 function Home() {
   const [lb, setLb] = useState<{ images: LightboxImage[]; index: number } | null>(null);
   const { user, profile, isAdmin } = useAuth();
@@ -346,15 +351,25 @@ function Home() {
           </div>
 
           <div className="space-y-5">
-            {previewMemories.length === 0 && (
+            {previewMemories.length === 0 && (!user || !canInteract) && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-amber-100 text-center text-gray-500">
-                {!user
-                  ? "Please sign in to view and share memories."
-                  : !canInteract
-                    ? "Admin approval required to view memories."
-                    : "No memories shared yet — be the first!"}
+                {!user ? "Please sign in to view and share memories." : "Admin approval required to view memories."}
               </div>
             )}
+            {previewMemories.length === 0 && canInteract && SAMPLE_MEMORIES.map((m) => (
+              <div key={m.name} className="bg-white rounded-2xl p-6 shadow-sm border border-amber-100">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center font-display text-xl font-bold text-amber-700 shrink-0">
+                    {m.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">{m.name}</p>
+                    <p className="text-xs text-gray-400">Sample memory — be the first to share yours!</p>
+                  </div>
+                </div>
+                <p className="text-gray-700 leading-relaxed">{m.body}</p>
+              </div>
+            ))}
             {previewMemories.map(m => {
               const name = m.profiles?.full_name ?? "Batchmate";
               const liked = !!(user && m.memory_likes.some((l) => l.user_id === user.id));

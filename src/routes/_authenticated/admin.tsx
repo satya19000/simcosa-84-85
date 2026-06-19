@@ -32,9 +32,13 @@ export const Route = createFileRoute("/_authenticated/admin")({
 });
 
 function Admin() {
-  const { isAdmin, loading } = useAuth();
+  const { user, isAdmin, loading } = useAuth();
   if (loading) return <div className="px-4 py-20 text-center">Loading…</div>;
-  if (!isAdmin) return <div className="px-4 py-20 text-center"><h2>Admin only</h2><p className="mt-2 text-muted-foreground">You don't have admin access.</p></div>;
+  if (!user) {
+    if (typeof window !== "undefined") window.location.replace("/auth");
+    return <div className="px-4 py-20 text-center">Redirecting to login…</div>;
+  }
+  if (!isAdmin) return <div className="px-4 py-20 text-center"><h2>Access Denied</h2><p className="mt-2 text-muted-foreground">You don't have admin access.</p></div>;
 
   return (
     <div className="mx-auto max-w-6xl px-4 sm:px-6 py-10">
@@ -161,9 +165,10 @@ function AddMembersPanel() {
         phone: r.mobile || r.phone || "",
         location: r.city || r.location || "",
         profession: r.profession || "",
+        approval_status: (r.approval_status?.trim().toLowerCase() || undefined) as ApprovalStatus | undefined,
       }));
       if (rows.length === 0) {
-        toast.error("No rows found. Expected columns: name, email, mobile, city, profession");
+        toast.error("No rows found. Expected columns: name, email, mobile, city, profession, approval_status");
         return;
       }
       const res = await adminImportMembers({ data: { rows, approval_status: importStatus } });
@@ -205,7 +210,7 @@ function AddMembersPanel() {
       <div className="border-t border-border pt-5">
         <h3 className="font-semibold">Bulk Import (CSV)</h3>
         <p className="text-sm text-muted-foreground mt-1">
-          Columns: name, email, mobile, city, profession. Existing emails are updated, not duplicated.
+          Columns: name, email, mobile, city, profession, approval_status (optional, defaults to the dropdown below if missing). Existing emails are updated, not duplicated.
         </p>
         <div className="mt-3 flex flex-wrap gap-3 items-center">
           <Select value={importStatus} onValueChange={(v) => setImportStatus(v as ApprovalStatus)}>
