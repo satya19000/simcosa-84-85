@@ -314,8 +314,8 @@ function Home() {
 
           <div className="space-y-5">
             {[
-              { name: "Dr. Ravi Kumar", time: "2 days ago", text: "I still remember our first day in the anatomy lab — we were terrified but we laughed so much. Those days at Siddhartha shaped everything I became as a doctor.", likes: 24, comments: 8 },
-              { name: "Dr. Sunitha Rao", time: "5 days ago", text: "The reunions we have every few years remind me why medicine wasn't just a career — it was a journey we took together. Missing everyone today. 💛", likes: 41, comments: 15 },
+              { name: "Dr. Vijaya Gopal", time: "2 days ago", text: "I still remember our first day in the anatomy lab — we were terrified but we laughed so much. Those days at Siddhartha shaped everything I became as a doctor.", likes: 24, comments: 8 },
+              { name: "Dr. Srilatha", time: "5 days ago", text: "The reunions we have every few years remind me why medicine wasn't just a career — it was a journey we took together. Missing everyone today. 💛", likes: 41, comments: 15 },
             ].map(m => (
               <div key={m.name} className="bg-white rounded-2xl p-6 shadow-sm border border-amber-100">
                 <div className="flex items-center gap-3 mb-4">

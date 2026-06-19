@@ -321,3 +321,100 @@ export const adminResolveSupport = createServerFn({ method: "POST" })
     await query(`UPDATE support_requests SET status = 'resolved' WHERE id = $1`, [data.id]);
     return { ok: true };
   });
+
+// ---- Blogs (moderation) ----
+export interface AdminBlogRow {
+  id: string;
+  title: string;
+  category: string;
+  is_featured: boolean;
+  is_published: boolean;
+  created_at: string;
+  author_id: string;
+  profiles: { full_name: string | null } | null;
+}
+
+export const adminListBlogs = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async (): Promise<AdminBlogRow[]> => {
+    const res = await query<AdminBlogRow>(
+      `SELECT b.id, b.title, b.category, b.is_featured, b.is_published, b.created_at, b.author_id,
+         json_build_object('full_name', p.full_name) AS profiles
+       FROM blogs b
+       LEFT JOIN profiles p ON p.id = b.author_id
+       ORDER BY b.created_at DESC`,
+    );
+    return res.rows;
+  });
+
+export const adminDeleteBlog = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await query(`DELETE FROM blogs WHERE id = $1`, [data.id]);
+    return { ok: true };
+  });
+
+// ---- Gallery (moderation) ----
+export interface AdminGalleryRow {
+  id: string;
+  title: string | null;
+  caption: string | null;
+  media_type: string;
+  storage_path: string;
+  created_at: string;
+  uploaded_by: string | null;
+  profiles: { full_name: string | null } | null;
+}
+
+export const adminListGallery = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async (): Promise<AdminGalleryRow[]> => {
+    const res = await query<AdminGalleryRow>(
+      `SELECT g.id, g.title, g.caption, g.media_type, g.storage_path, g.created_at, g.uploaded_by,
+         json_build_object('full_name', p.full_name) AS profiles
+       FROM gallery_items g
+       LEFT JOIN profiles p ON p.id = g.uploaded_by
+       ORDER BY g.created_at DESC`,
+    );
+    return res.rows;
+  });
+
+export const adminDeleteGalleryItem = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await query(`DELETE FROM gallery_items WHERE id = $1`, [data.id]);
+    return { ok: true };
+  });
+
+// ---- Memories (moderation) ----
+export interface AdminMemoryRow {
+  id: string;
+  title: string | null;
+  body: string;
+  created_at: string;
+  user_id: string;
+  profiles: { full_name: string | null } | null;
+}
+
+export const adminListMemories = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async (): Promise<AdminMemoryRow[]> => {
+    const res = await query<AdminMemoryRow>(
+      `SELECT m.id, m.title, m.body, m.created_at, m.user_id,
+         json_build_object('full_name', p.full_name) AS profiles
+       FROM memories m
+       LEFT JOIN profiles p ON p.id = m.user_id
+       ORDER BY m.created_at DESC`,
+    );
+    return res.rows;
+  });
+
+export const adminDeleteMemory = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await query(`DELETE FROM memories WHERE id = $1`, [data.id]);
+    return { ok: true };
+  });
