@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireAdmin } from "../backend/auth/middleware";
 import { query, withTransaction } from "../backend/db";
-import { PROFILE_COLUMNS, type ProfileRow } from "../backend/auth/service";
+import { PROFILE_COLUMNS, type ProfileRow, type ApprovalStatus } from "../backend/auth/service";
 import type { EventRow } from "./events";
 import type { AnnouncementRow } from "./announcements";
 import type { DonationRow, ExpenseRow } from "./donations";
@@ -157,17 +157,27 @@ export const adminAddAdminByEmail = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: { email: string }) => d)
   .handler(async ({ data }): Promise<{ ok: true }> => {
-    const res = await query<{ id: string }>(`SELECT id FROM profiles WHERE email = $1`, [
-      data.email.trim().toLowerCase(),
-    ]);
-    if (!res.rows[0]) {
-      throw new Error("No member found with that email. They must sign up first.");
-    }
-    await query(
-      `INSERT INTO user_roles (user_id, role) VALUES ($1, 'admin')
-       ON CONFLICT (user_id, role) DO NOTHING`,
-      [res.rows[0].id],
+    const res = await query<{ id: string; approval_status: ApprovalStatus }>(
+      `SELECT id, approval_status FROM profiles WHERE lower(email) = $1`,
+      [data.email.trim().toLowerCase()],
     );
+    const member = res.rows[0];
+    if (!member) {
+      throw new Error("Member not found. Ask them to sign up first.");
+    }
+    await withTransaction(async (c) => {
+      if (member.approval_status !== "approved") {
+        await c.query(
+          `UPDATE profiles SET approved = true, approval_status = 'approved', updated_at = now() WHERE id = $1`,
+          [member.id],
+        );
+      }
+      await c.query(
+        `INSERT INTO user_roles (user_id, role) VALUES ($1, 'admin')
+         ON CONFLICT (user_id, role) DO NOTHING`,
+        [member.id],
+      );
+    });
     return { ok: true };
   });
 
