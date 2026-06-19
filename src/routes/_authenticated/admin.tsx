@@ -9,6 +9,9 @@ import {
   adminListDonations, adminCreateDonation,
   adminListExpenses, adminCreateExpense,
   adminListSupport, adminResolveSupport,
+  adminListBlogs, adminDeleteBlog,
+  adminListGallery, adminDeleteGalleryItem,
+  adminListMemories, adminDeleteMemory,
 } from "@/api/admin";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -42,6 +45,9 @@ function Admin() {
           <TabsTrigger value="approved">Approved Members</TabsTrigger>
           <TabsTrigger value="rejected">Rejected Members</TabsTrigger>
           <TabsTrigger value="admins">Admins</TabsTrigger>
+          <TabsTrigger value="blogs">Blogs</TabsTrigger>
+          <TabsTrigger value="gallery">Gallery</TabsTrigger>
+          <TabsTrigger value="memories">Memories</TabsTrigger>
           <TabsTrigger value="events">Events</TabsTrigger>
           <TabsTrigger value="announcements">Announcements</TabsTrigger>
           <TabsTrigger value="donations">Donations</TabsTrigger>
@@ -52,6 +58,9 @@ function Admin() {
         <TabsContent value="approved" className="mt-6"><ApprovedMembersTab /></TabsContent>
         <TabsContent value="rejected" className="mt-6"><RejectedMembersTab /></TabsContent>
         <TabsContent value="admins" className="mt-6"><AdminsTab /></TabsContent>
+        <TabsContent value="blogs" className="mt-6"><BlogsTab /></TabsContent>
+        <TabsContent value="gallery" className="mt-6"><GalleryTab /></TabsContent>
+        <TabsContent value="memories" className="mt-6"><MemoriesTab /></TabsContent>
         <TabsContent value="events" className="mt-6"><EventsTab /></TabsContent>
         <TabsContent value="announcements" className="mt-6"><AnnouncementsTab /></TabsContent>
         <TabsContent value="donations" className="mt-6"><DonationsTab /></TabsContent>
@@ -325,6 +334,94 @@ function AdminsTab() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function BlogsTab() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["admin-blogs"], queryFn: () => adminListBlogs() });
+  const del = async (id: string) => {
+    try {
+      await adminDeleteBlog({ data: { id } });
+      toast.success("Blog deleted");
+      qc.invalidateQueries({ queryKey: ["admin-blogs"] });
+      qc.invalidateQueries({ queryKey: ["blogs"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+  if (data?.length === 0) return <p className="text-muted-foreground">No blogs yet.</p>;
+  return (
+    <div className="space-y-3">
+      {data?.map((b) => (
+        <div key={b.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
+          <div>
+            <p className="font-semibold">{b.title} {b.is_featured && <span className="text-xs text-gold ml-1">★ featured</span>} {!b.is_published && <span className="text-xs text-muted-foreground ml-1">[unpublished]</span>}</p>
+            <p className="text-sm text-muted-foreground">By {b.profiles?.full_name ?? "Unknown"} · {format(new Date(b.created_at), "PPP")}</p>
+          </div>
+          <Button onClick={() => del(b.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GalleryTab() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => adminListGallery() });
+  const del = async (id: string) => {
+    try {
+      await adminDeleteGalleryItem({ data: { id } });
+      toast.success("Item deleted");
+      qc.invalidateQueries({ queryKey: ["admin-gallery"] });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+  if (data?.length === 0) return <p className="text-muted-foreground">No gallery items yet.</p>;
+  return (
+    <div className="space-y-3">
+      {data?.map((g) => (
+        <div key={g.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
+          <div>
+            <p className="font-semibold">{g.title || g.caption || g.storage_path} <span className="text-xs text-muted-foreground ml-1 capitalize">[{g.media_type}]</span></p>
+            <p className="text-sm text-muted-foreground">By {g.profiles?.full_name ?? "Unknown"} · {format(new Date(g.created_at), "PPP")}</p>
+          </div>
+          <Button onClick={() => del(g.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MemoriesTab() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["admin-memories"], queryFn: () => adminListMemories() });
+  const del = async (id: string) => {
+    try {
+      await adminDeleteMemory({ data: { id } });
+      toast.success("Memory deleted");
+      qc.invalidateQueries({ queryKey: ["admin-memories"] });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+  if (data?.length === 0) return <p className="text-muted-foreground">No memories yet.</p>;
+  return (
+    <div className="space-y-3">
+      {data?.map((m) => (
+        <div key={m.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
+          <div>
+            <p className="font-semibold">{m.title || "Untitled"}</p>
+            <p className="text-sm text-muted-foreground line-clamp-1">{m.body}</p>
+            <p className="text-sm text-muted-foreground">By {m.profiles?.full_name ?? "Unknown"} · {format(new Date(m.created_at), "PPP")}</p>
+          </div>
+          <Button onClick={() => del(m.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
+        </div>
+      ))}
     </div>
   );
 }
