@@ -4,6 +4,7 @@ import {
   adminListMembers,
   adminApproveMember, adminRejectMember, adminMarkNeedsClarification, adminDeleteMember,
   adminPromoteToAdmin, adminDemoteAdmin, adminListAdmins, adminAddAdminByEmail,
+  adminAddMember, adminImportMembers, type AdminImportRow,
   adminListEvents, adminCreateEvent, adminDeleteEvent,
   adminListAnnouncements, adminCreateAnnouncement, adminDeleteAnnouncement,
   adminListDonations, adminCreateDonation,
@@ -13,6 +14,7 @@ import {
   adminListGallery, adminDeleteGalleryItem,
   adminListMemories, adminDeleteMemory,
 } from "@/api/admin";
+import type { ApprovalStatus } from "@/backend/auth/service";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,14 +32,20 @@ export const Route = createFileRoute("/_authenticated/admin")({
 });
 
 function Admin() {
-  const { isAdmin, loading } = useAuth();
+  const { user, isAdmin, loading } = useAuth();
   if (loading) return <div className="px-4 py-20 text-center">Loading…</div>;
-  if (!isAdmin) return <div className="px-4 py-20 text-center"><h2>Admin only</h2><p className="mt-2 text-muted-foreground">You don't have admin access.</p></div>;
+  if (!user) {
+    if (typeof window !== "undefined") window.location.replace("/auth");
+    return <div className="px-4 py-20 text-center">Redirecting to login…</div>;
+  }
+  if (!isAdmin) return <div className="px-4 py-20 text-center"><h2>Access Denied</h2><p className="mt-2 text-muted-foreground">You don't have admin access.</p></div>;
 
   return (
     <div className="mx-auto max-w-6xl px-4 sm:px-6 py-10">
       <h1>Admin Dashboard</h1>
       <p className="text-muted-foreground mt-2">Manage members, events, announcements, finances and requests.</p>
+
+      <AddMembersPanel />
 
       <Tabs defaultValue="pending" className="mt-8">
         <TabsList className="flex flex-wrap h-auto justify-start">
@@ -73,6 +81,151 @@ function Admin() {
 
 function useAdminMembers() {
   return useQuery({ queryKey: ["admin-members"], queryFn: () => adminListMembers() });
+}
+
+// Minimal CSV parser: handles a header row, comma delimiters, and double-quoted fields.
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const parseLine = (line: string): string[] => {
+    const cells: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') inQuotes = false;
+        else cur += ch;
+      } else if (ch === '"') inQuotes = true;
+      else if (ch === ",") { cells.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    cells.push(cur);
+    return cells.map((c) => c.trim());
+  };
+
+  const header = parseLine(lines[0]).map((h) => h.toLowerCase());
+  return lines.slice(1).map((line) => {
+    const cells = parseLine(line);
+    const row: Record<string, string> = {};
+    header.forEach((h, i) => { row[h] = cells[i] ?? ""; });
+    return row;
+  });
+}
+
+function AddMembersPanel() {
+  const qc = useQueryClient();
+  const [importing, setImporting] = useState(false);
+  const [addingManual, setAddingManual] = useState(false);
+  const [importStatus, setImportStatus] = useState<ApprovalStatus>("pending");
+  const [manualStatus, setManualStatus] = useState<ApprovalStatus>("pending");
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-members"] });
+
+  const addManual = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    setAddingManual(true);
+    try {
+      await adminAddMember({
+        data: {
+          full_name: String(fd.get("full_name") || ""),
+          email: String(fd.get("email") || ""),
+          phone: String(fd.get("phone") || ""),
+          location: String(fd.get("location") || ""),
+          profession: String(fd.get("profession") || ""),
+          approval_status: manualStatus,
+        },
+      });
+      form.reset();
+      setManualStatus("pending");
+      toast.success("Member added");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add member");
+    } finally {
+      setAddingManual(false);
+    }
+  };
+
+  const onCsvSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      const rows: AdminImportRow[] = parsed.map((r) => ({
+        full_name: r.name || r.full_name || "",
+        email: r.email || "",
+        phone: r.mobile || r.phone || "",
+        location: r.city || r.location || "",
+        profession: r.profession || "",
+        approval_status: (r.approval_status?.trim().toLowerCase() || undefined) as ApprovalStatus | undefined,
+      }));
+      if (rows.length === 0) {
+        toast.error("No rows found. Expected columns: name, email, mobile, city, profession, approval_status");
+        return;
+      }
+      const res = await adminImportMembers({ data: { rows, approval_status: importStatus } });
+      toast.success(`Imported ${res.imported} member(s)${res.skipped ? `, skipped ${res.skipped}` : ""}`);
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-card p-5 space-y-6">
+      <div>
+        <h3 className="font-semibold">Add Member Manually</h3>
+        <form onSubmit={addManual} className="mt-3 grid sm:grid-cols-2 gap-3">
+          <div><Label>Full name</Label><Input name="full_name" required className="h-11" /></div>
+          <div><Label>Email</Label><Input name="email" type="email" required className="h-11" /></div>
+          <div><Label>Mobile</Label><Input name="phone" className="h-11" /></div>
+          <div><Label>City</Label><Input name="location" className="h-11" /></div>
+          <div><Label>Profession</Label><Input name="profession" className="h-11" /></div>
+          <div>
+            <Label>Approval status</Label>
+            <Select value={manualStatus} onValueChange={(v) => setManualStatus(v as ApprovalStatus)}>
+              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="submit" disabled={addingManual} className="sm:col-span-2 h-11">
+            {addingManual ? "Adding…" : "Add member"}
+          </Button>
+        </form>
+      </div>
+
+      <div className="border-t border-border pt-5">
+        <h3 className="font-semibold">Bulk Import (CSV)</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Columns: name, email, mobile, city, profession, approval_status (optional, defaults to the dropdown below if missing). Existing emails are updated, not duplicated.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-3 items-center">
+          <Select value={importStatus} onValueChange={(v) => setImportStatus(v as ApprovalStatus)}>
+            <SelectTrigger className="h-11 w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">Import as Pending</SelectItem>
+              <SelectItem value="approved">Import as Approved</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input type="file" accept=".csv,text/csv" onChange={onCsvSelected} disabled={importing} className="h-11 max-w-xs" />
+          {importing && <span className="text-sm text-muted-foreground">Importing…</span>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PendingMembersTab() {

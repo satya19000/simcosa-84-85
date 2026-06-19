@@ -110,7 +110,7 @@ function Memories() {
             <div className="text-center py-16">
               <BookOpen className="h-16 w-16 text-amber-200 mx-auto mb-4" />
               <h3 className="text-gray-500 font-display">No memories yet</h3>
-              <p className="text-gray-400 mt-2">Be the first to share a cherished memory!</p>
+              <p className="text-gray-400 mt-2">Be the first to share a cherished memory — like Dr. Vijaya Gopal or Dr. Srilatha would!</p>
             </div>
           )}
 

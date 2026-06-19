@@ -129,6 +129,67 @@ async function destroySession(sid) {
   await query("DELETE FROM sessions WHERE sid = $1", [sid]);
 }
 const SESSION_COOKIE = "sid";
+const RESEND_API_URL = "https://api.resend.com/emails";
+function escapeHtml(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+async function sendNewMemberAdminNotification(adminEmails, member) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.ADMIN_FROM_EMAIL;
+  if (!apiKey || !from) {
+    console.warn(
+      "[email] RESEND_API_KEY/ADMIN_FROM_EMAIL not configured — skipping new-member admin notification"
+    );
+    return;
+  }
+  if (adminEmails.length === 0) {
+    console.warn("[email] no admin emails found — skipping new-member admin notification");
+    return;
+  }
+  const approvalLink = "https://simcosa-84-85.vercel.app/admin";
+  const fields = [
+    ["Name", member.name],
+    ["Email", member.email ?? "—"],
+    ["Mobile", "—"],
+    ["City", "—"],
+    ["Profession", "—"],
+    ["Signup time", member.signupTime.toUTCString()]
+  ];
+  const html = `
+    <h2>New SIMCOSA member awaiting approval</h2>
+    <table cellpadding="6" cellspacing="0">
+      ${fields.map(([label, value]) => `<tr><td><strong>${escapeHtml(label)}</strong></td><td>${escapeHtml(value)}</td></tr>`).join("")}
+    </table>
+    <p><a href="${approvalLink}">Review and approve at ${approvalLink}</a></p>
+  `;
+  const text = [
+    ...fields.map(([label, value]) => `${label}: ${value}`),
+    "",
+    `Approve at: ${approvalLink}`
+  ].join("\n");
+  try {
+    const res = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        from,
+        to: adminEmails,
+        subject: "New SIMCOSA member awaiting approval",
+        html,
+        text
+      })
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      console.warn("[email] Resend request failed:", res.status, detail);
+    }
+  } catch (err) {
+    console.warn("[email] failed to send new-member admin notification:", err);
+  }
+}
 async function upsertUserFromClaims(claims) {
   const id = claims.sub;
   const email = claims.email ?? null;
@@ -136,7 +197,7 @@ async function upsertUserFromClaims(claims) {
   const lastName = claims.last_name ?? null;
   const image = claims.profile_image_url ?? null;
   const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || email || "Batchmate";
-  await withTransaction(async (c) => {
+  const isNewSignup = await withTransaction(async (c) => {
     if (email) {
       await c.query(`DELETE FROM users WHERE email = $1 AND id <> $2`, [email, id]);
     }
@@ -151,10 +212,11 @@ async function upsertUserFromClaims(claims) {
          updated_at = now()`,
       [id, email, firstName, lastName, image]
     );
-    await c.query(
+    const profileInsert = await c.query(
       `INSERT INTO profiles (id, full_name, email, photo_url, approved, approval_status)
        VALUES ($1, $2, $3, $4, false, 'pending')
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`,
       [id, fullName, email, image]
     );
     await c.query(
@@ -162,7 +224,19 @@ async function upsertUserFromClaims(claims) {
        ON CONFLICT (user_id, role) DO NOTHING`,
       [id]
     );
+    return profileInsert.rowCount > 0;
   });
+  if (isNewSignup) {
+    const admins = await query(
+      `SELECT u.email FROM user_roles ur JOIN users u ON u.id = ur.user_id WHERE ur.role = 'admin'`
+    );
+    const adminEmails = admins.rows.map((r) => r.email).filter((e) => !!e);
+    void sendNewMemberAdminNotification(adminEmails, {
+      name: fullName,
+      email,
+      signupTime: /* @__PURE__ */ new Date()
+    });
+  }
 }
 const PROFILE_COLUMNS = `id, full_name, photo_url, phone, whatsapp, email, location, profession, bio,
   spouse_name, clinic_or_hospital, country_state, batch_confirmed, approved, approval_status,
@@ -377,7 +451,7 @@ async function serveProfilePhoto(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-CbQ9O30t.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-BjolCwuX.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
