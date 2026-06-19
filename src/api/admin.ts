@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type pg from "pg";
 import { requireAdmin } from "../backend/auth/middleware";
 import { query, withTransaction } from "../backend/db";
 import { PROFILE_COLUMNS, type ProfileRow, type ApprovalStatus } from "../backend/auth/service";
@@ -119,6 +120,94 @@ export const adminEditMember = createServerFn({ method: "POST" })
       ],
     );
     return res.rows[0];
+  });
+
+export interface AdminAddMemberInput {
+  full_name: string;
+  email: string;
+  phone?: string;
+  location?: string;
+  profession?: string;
+  approval_status: ApprovalStatus;
+}
+
+async function upsertManualMember(
+  c: pg.PoolClient,
+  data: AdminAddMemberInput,
+): Promise<void> {
+  const email = data.email.trim().toLowerCase();
+  const existing = await c.query<{ id: string }>(
+    `SELECT id FROM profiles WHERE lower(email) = $1`,
+    [email],
+  );
+  const approved = data.approval_status === "approved";
+
+  if (existing.rows[0]) {
+    await c.query(
+      `UPDATE profiles SET
+         full_name = $2, phone = COALESCE($3, phone), location = COALESCE($4, location),
+         profession = COALESCE($5, profession), approved = $6, approval_status = $7, updated_at = now()
+       WHERE id = $1`,
+      [existing.rows[0].id, data.full_name, data.phone || null, data.location || null, data.profession || null, approved, data.approval_status],
+    );
+    return;
+  }
+
+  const id = (await c.query<{ id: string }>(`SELECT gen_random_uuid()::text AS id`)).rows[0].id;
+  await c.query(
+    `INSERT INTO users (id, email, first_name, last_name) VALUES ($1, $2, $3, '')`,
+    [id, email, data.full_name],
+  );
+  await c.query(
+    `INSERT INTO profiles (id, full_name, email, phone, location, profession, approved, approval_status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, data.full_name, email, data.phone || null, data.location || null, data.profession || null, approved, data.approval_status],
+  );
+}
+
+export const adminAddMember = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: AdminAddMemberInput) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    if (!data.email.trim() || !data.full_name.trim()) {
+      throw new Error("Name and email are required.");
+    }
+    await withTransaction((c) => upsertManualMember(c, data));
+    return { ok: true };
+  });
+
+export interface AdminImportRow {
+  full_name: string;
+  email: string;
+  phone?: string;
+  location?: string;
+  profession?: string;
+}
+
+export const adminImportMembers = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { rows: AdminImportRow[]; approval_status: ApprovalStatus }) => d)
+  .handler(async ({ data }): Promise<{ imported: number; skipped: number }> => {
+    let imported = 0;
+    let skipped = 0;
+    await withTransaction(async (c) => {
+      for (const row of data.rows) {
+        if (!row.email?.trim() || !row.full_name?.trim()) {
+          skipped++;
+          continue;
+        }
+        await upsertManualMember(c, {
+          full_name: row.full_name,
+          email: row.email,
+          phone: row.phone,
+          location: row.location,
+          profession: row.profession,
+          approval_status: data.approval_status,
+        });
+        imported++;
+      }
+    });
+    return { imported, skipped };
   });
 
 // ---- Admins (multi-admin management) ----
