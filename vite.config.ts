@@ -6,12 +6,30 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Outside the Lovable sandbox, the shared config only runs nitro (the engine
+// that bundles the SSR server) when explicitly told to. On Vercel that meant
+// `npm run build` was producing a client-only Vite build with no server
+// output, which Vercel can't route — every page 404'd. Force nitro on with
+// the `vercel` preset when building on Vercel so it emits a proper
+// Build Output API v3 bundle (.vercel/output) with a working SSR function.
+const isVercel = !!process.env.VERCEL;
+
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  nitro: isVercel
+    ? {
+        preset: "vercel",
+        output: {
+          dir: ".vercel/output",
+          serverDir: ".vercel/output/functions/__server.func",
+          publicDir: ".vercel/output/static",
+        },
+      }
+    : undefined,
   vite: {
     server: {
       host: "0.0.0.0",
