@@ -451,7 +451,7 @@ async function serveProfilePhoto(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-BjolCwuX.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-CCM_JU5a.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
