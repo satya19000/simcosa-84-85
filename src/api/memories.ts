@@ -12,6 +12,7 @@ export interface MemoryComment {
 
 export interface MemoryRow {
   id: string;
+  user_id: string;
   title: string | null;
   body: string;
   image_url: string | null;
@@ -26,7 +27,7 @@ export const listMemories = createServerFn({ method: "GET" })
   .handler(async (): Promise<MemoryRow[]> => {
     const res = await query<MemoryRow>(
       `SELECT
-         m.id, m.title, m.body, m.image_url, m.created_at,
+         m.id, m.user_id, m.title, m.body, m.image_url, m.created_at,
          json_build_object('full_name', p.full_name) AS profiles,
          COALESCE((
            SELECT json_agg(json_build_object('user_id', ml.user_id))
@@ -87,5 +88,31 @@ export const addComment = createServerFn({ method: "POST" })
       `INSERT INTO memory_comments (memory_id, user_id, body) VALUES ($1, $2, $3)`,
       [data.memoryId, context.userId, data.body],
     );
+    return { ok: true };
+  });
+
+export const deleteMemory = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const owned = await query<{ user_id: string }>(`SELECT user_id FROM memories WHERE id = $1`, [data.id]);
+    const row = owned.rows[0];
+    if (!row) throw new Error("Memory not found");
+    if (row.user_id !== context.userId && !context.isAdmin) throw new Error("Forbidden");
+
+    await query(`DELETE FROM memories WHERE id = $1`, [data.id]);
+    return { ok: true };
+  });
+
+export const deleteComment = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const owned = await query<{ user_id: string }>(`SELECT user_id FROM memory_comments WHERE id = $1`, [data.id]);
+    const row = owned.rows[0];
+    if (!row) throw new Error("Comment not found");
+    if (row.user_id !== context.userId && !context.isAdmin) throw new Error("Forbidden");
+
+    await query(`DELETE FROM memory_comments WHERE id = $1`, [data.id]);
     return { ok: true };
   });

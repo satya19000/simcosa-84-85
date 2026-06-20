@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { listGallery, uploadGalleryItem } from "@/api/gallery";
+import { listGallery, uploadGalleryItem, deleteGalleryItem } from "@/api/gallery";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Camera, Upload, Film, Image } from "lucide-react";
+import { Camera, Upload, Film, Image, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 
@@ -24,8 +24,11 @@ const SAMPLE_IMAGES: LightboxImage[] = [
   { src: "/assets/member-profile.jpeg", caption: "Our Batchmate" },
 ];
 
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const MAX_UPLOAD_MB = 15;
+
 function Gallery() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [activeFilter, setActiveFilter] = useState("All");
@@ -43,6 +46,14 @@ function Gallery() {
     const fd = new FormData(form);
     const file = fd.get("file") as File;
     if (!file || !user) return;
+    if (file.type.startsWith("image") && !ALLOWED_IMAGE_TYPES.has(file.type)) {
+      toast.error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      toast.error(`File is too large. Maximum size is ${MAX_UPLOAD_MB}MB.`);
+      return;
+    }
     setUploading(true);
     try {
       await uploadGalleryItem({ data: fd });
@@ -59,6 +70,17 @@ function Gallery() {
 
   const images = items?.filter(i => i.media_type === "image") ?? [];
   const videos = items?.filter(i => i.media_type === "video") ?? [];
+
+  const onDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
+    try {
+      await deleteGalleryItem({ data: { id } });
+      toast.success("Item deleted");
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    }
+  };
 
   const uploadedImages: LightboxImage[] = images.map(it => ({
     src: `/api/gallery/${it.id}`,
@@ -162,6 +184,8 @@ function Gallery() {
                   key={it.id}
                   item={it}
                   onOpen={() => setLb({ images: uploadedImages, index: idx })}
+                  canDelete={isAdmin || it.uploaded_by === user?.id}
+                  onDelete={() => onDelete(it.id)}
                 />
               ))}
             </div>
@@ -176,7 +200,14 @@ function Gallery() {
               <h3 className="font-display font-bold text-gray-700">Videos ({videos.length})</h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {videos.map(it => <GalleryItem key={it.id} item={it} />)}
+              {videos.map(it => (
+                <GalleryItem
+                  key={it.id}
+                  item={it}
+                  canDelete={isAdmin || it.uploaded_by === user?.id}
+                  onDelete={() => onDelete(it.id)}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -192,11 +223,31 @@ function Gallery() {
   );
 }
 
-function GalleryItem({ item, onOpen }: { item: { id: string; storage_path: string; media_type: string; caption: string | null }; onOpen?: () => void }) {
+function GalleryItem({
+  item,
+  onOpen,
+  canDelete,
+  onDelete,
+}: {
+  item: { id: string; storage_path: string; media_type: string; caption: string | null };
+  onOpen?: () => void;
+  canDelete?: boolean;
+  onDelete?: () => void;
+}) {
   const url = `/api/gallery/${item.id}`;
   const isVideo = item.media_type === "video";
   return (
-    <div className="rounded-2xl overflow-hidden shadow-sm border border-amber-100 hover:shadow-md transition-shadow group">
+    <div className="relative rounded-2xl overflow-hidden shadow-sm border border-amber-100 hover:shadow-md transition-shadow group">
+      {canDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label="Delete item"
+          className="absolute top-2 right-2 z-10 h-9 w-9 rounded-full bg-black/60 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
       <div className={`${isVideo ? "aspect-video" : "aspect-square"} bg-amber-50 flex items-center justify-center`}>
         {isVideo
           ? <video src={url} controls className="w-full h-full object-cover" />

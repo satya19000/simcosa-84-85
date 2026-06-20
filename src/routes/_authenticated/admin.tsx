@@ -495,6 +495,7 @@ function BlogsTab() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-blogs"], queryFn: () => adminListBlogs() });
   const del = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
     try {
       await adminDeleteBlog({ data: { id } });
       toast.success("Blog deleted");
@@ -524,6 +525,7 @@ function GalleryTab() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => adminListGallery() });
   const del = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
     try {
       await adminDeleteGalleryItem({ data: { id } });
       toast.success("Item deleted");
@@ -538,9 +540,16 @@ function GalleryTab() {
     <div className="space-y-3">
       {data?.map((g) => (
         <div key={g.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
-          <div>
-            <p className="font-semibold">{g.title || g.caption || g.storage_path} <span className="text-xs text-muted-foreground ml-1 capitalize">[{g.media_type}]</span></p>
-            <p className="text-sm text-muted-foreground">By {g.profiles?.full_name ?? "Unknown"} · {format(new Date(g.created_at), "PPP")}</p>
+          <div className="flex items-center gap-3">
+            {g.media_type === "image" ? (
+              <img src={`/api/gallery/${g.id}`} alt={g.caption ?? g.title ?? "Photo"} className="h-14 w-14 rounded-lg object-cover shrink-0" loading="lazy" />
+            ) : (
+              <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground shrink-0">Video</div>
+            )}
+            <div>
+              <p className="font-semibold">{g.title || g.caption || g.storage_path} <span className="text-xs text-muted-foreground ml-1 capitalize">[{g.media_type}]</span></p>
+              <p className="text-sm text-muted-foreground">By {g.profiles?.full_name ?? "Unknown"} · {format(new Date(g.created_at), "PPP")}</p>
+            </div>
           </div>
           <Button onClick={() => del(g.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
         </div>
@@ -553,6 +562,7 @@ function MemoriesTab() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-memories"], queryFn: () => adminListMemories() });
   const del = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
     try {
       await adminDeleteMemory({ data: { id } });
       toast.success("Memory deleted");
@@ -602,6 +612,7 @@ function EventsTab() {
     }
   };
   const del = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
     await adminDeleteEvent({ data: { id } });
     qc.invalidateQueries({ queryKey: ["admin-events"] });
     qc.invalidateQueries({ queryKey: ["events"] });

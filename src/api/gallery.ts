@@ -2,6 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
 export interface GalleryRow {
   id: string;
   title: string | null;
@@ -31,12 +34,34 @@ export const uploadGalleryItem = createServerFn({ method: "POST" })
     if (!file || typeof file === "string") {
       throw new Error("No file provided");
     }
-    const bytes = Buffer.from(await file.arrayBuffer());
     const mediaType = file.type.startsWith("video") ? "video" : "image";
+    if (mediaType === "image" && !ALLOWED_IMAGE_TYPES.has(file.type)) {
+      throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw new Error("File is too large. Maximum size is 15MB.");
+    }
+    const bytes = Buffer.from(await file.arrayBuffer());
     await query(
       `INSERT INTO gallery_items (storage_path, caption, media_type, mime, data, uploaded_by)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [file.name, caption || null, mediaType, file.type || "application/octet-stream", bytes, context.userId],
     );
+    return { ok: true };
+  });
+
+export const deleteGalleryItem = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const owned = await query<{ uploaded_by: string | null }>(
+      `SELECT uploaded_by FROM gallery_items WHERE id = $1`,
+      [data.id],
+    );
+    const row = owned.rows[0];
+    if (!row) throw new Error("Item not found");
+    if (row.uploaded_by !== context.userId && !context.isAdmin) throw new Error("Forbidden");
+
+    await query(`DELETE FROM gallery_items WHERE id = $1`, [data.id]);
     return { ok: true };
   });

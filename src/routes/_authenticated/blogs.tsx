@@ -22,6 +22,9 @@ export const Route = createFileRoute("/_authenticated/blogs")({
   component: Blogs,
 });
 
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const MAX_UPLOAD_MB = 15;
+
 export const CATEGORIES: { value: BlogCategory; label: string }[] = [
   { value: "opinions", label: "Opinions" },
   { value: "poems", label: "Poems" },
@@ -92,6 +95,17 @@ function Blogs() {
     const form = e.currentTarget;
     const fd = new FormData(form);
     fd.set("category", category);
+    const file = fd.get("image") as File | null;
+    if (file && typeof file !== "string" && file.size > 0) {
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        toast.error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+        return;
+      }
+      if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+        toast.error(`File is too large. Maximum size is ${MAX_UPLOAD_MB}MB.`);
+        return;
+      }
+    }
     setPosting(true);
     try {
       await createBlog({ data: fd });
