@@ -6,9 +6,10 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Camera, Upload, Film, Image, Trash2 } from "lucide-react";
+import { Camera, Upload, Film, Image, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
+import { DropzoneUpload } from "@/components/DropzoneUpload";
 
 export const Route = createFileRoute("/_authenticated/gallery")({
   head: () => ({ meta: [{ title: "Photo & Video Gallery — SIMCOSA 84–85" }] }),
@@ -30,7 +31,10 @@ const MAX_UPLOAD_MB = 15;
 function Gallery() {
   const { user, isAdmin } = useAuth();
   const qc = useQueryClient();
+  const [files, setFiles] = useState<File[]>([]);
+  const [caption, setCaption] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [activeFilter, setActiveFilter] = useState("All");
   const [showUpload, setShowUpload] = useState(false);
   const [lb, setLb] = useState<{ images: LightboxImage[]; index: number } | null>(null);
@@ -42,34 +46,43 @@ function Gallery() {
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const form = e.currentTarget;
-    const fd = new FormData(form);
-    const file = fd.get("file") as File;
-    if (!file || !user) return;
-    if (file.type.startsWith("image") && !ALLOWED_IMAGE_TYPES.has(file.type)) {
-      toast.error("Unsupported image format. Please use JPG, PNG, or WEBP.");
-      return;
-    }
-    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
-      toast.error(`File is too large. Maximum size is ${MAX_UPLOAD_MB}MB.`);
-      return;
+    if (files.length === 0 || !user) return;
+    for (const file of files) {
+      if (file.type.startsWith("image") && !ALLOWED_IMAGE_TYPES.has(file.type)) {
+        toast.error(`Unsupported image format for "${file.name}". Please use JPG, PNG, or WEBP.`);
+        return;
+      }
+      if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+        toast.error(`"${file.name}" is too large. Maximum size is ${MAX_UPLOAD_MB}MB.`);
+        return;
+      }
     }
     setUploading(true);
+    setUploadProgress({ done: 0, total: files.length });
     try {
-      await uploadGalleryItem({ data: fd });
-      toast.success("Uploaded successfully!");
-      form.reset();
+      for (let i = 0; i < files.length; i++) {
+        const fd = new FormData();
+        fd.set("file", files[i]);
+        if (caption) fd.set("caption", caption);
+        await uploadGalleryItem({ data: fd });
+        setUploadProgress({ done: i + 1, total: files.length });
+      }
+      toast.success(`Uploaded ${files.length} item(s) successfully!`);
+      setFiles([]);
+      setCaption("");
       setShowUpload(false);
       qc.invalidateQueries({ queryKey: ["gallery"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   };
 
   const images = items?.filter(i => i.media_type === "image") ?? [];
   const videos = items?.filter(i => i.media_type === "video") ?? [];
+  const documents = items?.filter(i => i.media_type === "document") ?? [];
 
   const onDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
@@ -109,18 +122,31 @@ function Gallery() {
         {/* Upload form */}
         {showUpload && (
           <div className="mx-auto max-w-6xl mt-6">
-            <form onSubmit={onSubmit} className="bg-amber-50 rounded-2xl border border-amber-200 p-5 flex flex-col sm:flex-row gap-3 items-end">
-              <div className="flex-1 w-full">
-                <Label htmlFor="file" className="font-semibold text-gray-700">Choose a photo or video</Label>
-                <Input id="file" name="file" type="file" accept="image/*,video/*" required className="h-12 mt-1 border-amber-200" />
+            <form onSubmit={onSubmit} className="bg-amber-50 rounded-2xl border border-amber-200 p-5 space-y-4">
+              <div>
+                <Label className="font-semibold text-gray-700">Choose photos, videos, or files</Label>
+                <DropzoneUpload
+                  files={files}
+                  onFilesChange={setFiles}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                  disabled={uploading}
+                  className="mt-1"
+                />
               </div>
-              <div className="flex-1 w-full">
-                <Label htmlFor="caption" className="font-semibold text-gray-700">Caption (optional)</Label>
-                <Input id="caption" name="caption" placeholder="Add a caption…" className="h-12 mt-1 border-amber-200" />
+              <div>
+                <Label htmlFor="caption" className="font-semibold text-gray-700">Caption (optional, applied to all)</Label>
+                <Input id="caption" name="caption" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Add a caption…" className="h-12 mt-1 border-amber-200" />
               </div>
-              <Button type="submit" disabled={uploading} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl shrink-0">
-                {uploading ? "Uploading…" : "Upload"}
-              </Button>
+              <div className="flex items-center gap-4">
+                <Button type="submit" disabled={uploading || files.length === 0} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl shrink-0">
+                  {uploading ? "Uploading…" : `Upload ${files.length > 0 ? files.length + " item(s)" : ""}`}
+                </Button>
+                {uploadProgress && (
+                  <span className="text-sm text-gray-500 font-medium">
+                    Uploading {uploadProgress.done}/{uploadProgress.total}…
+                  </span>
+                )}
+              </div>
             </form>
           </div>
         )}
@@ -207,6 +233,47 @@ function Gallery() {
                   canDelete={isAdmin || it.uploaded_by === user?.id}
                   onDelete={() => onDelete(it.id)}
                 />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Uploaded documents */}
+        {documents.length > 0 && (
+          <div className="mt-10">
+            <div className="flex items-center gap-3 mb-5">
+              <FileText className="h-5 w-5 text-amber-500" />
+              <h3 className="font-display font-bold text-gray-700">Files ({documents.length})</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {documents.map(it => (
+                <div
+                  key={it.id}
+                  className="relative flex items-center gap-3 rounded-2xl border border-amber-100 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+                    <FileText className="h-6 w-6 text-amber-500" />
+                  </div>
+                  <a
+                    href={`/api/gallery/${it.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 min-w-0"
+                  >
+                    <p className="font-semibold text-gray-700 truncate">{it.caption || it.storage_path}</p>
+                    <p className="text-xs text-gray-400 truncate">{it.storage_path}</p>
+                  </a>
+                  {(isAdmin || it.uploaded_by === user?.id) && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(it.id)}
+                      aria-label="Delete file"
+                      className="h-9 w-9 rounded-full flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </div>

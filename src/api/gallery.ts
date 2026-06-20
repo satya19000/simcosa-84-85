@@ -4,6 +4,15 @@ import { query } from "../backend/db";
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const ALLOWED_DOC_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
 
 export interface GalleryRow {
   id: string;
@@ -34,9 +43,16 @@ export const uploadGalleryItem = createServerFn({ method: "POST" })
     if (!file || typeof file === "string") {
       throw new Error("No file provided");
     }
-    const mediaType = file.type.startsWith("video") ? "video" : "image";
+    const mediaType = file.type.startsWith("video")
+      ? "video"
+      : file.type.startsWith("image")
+        ? "image"
+        : "document";
     if (mediaType === "image" && !ALLOWED_IMAGE_TYPES.has(file.type)) {
       throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+    }
+    if (mediaType === "document" && !ALLOWED_DOC_TYPES.has(file.type)) {
+      throw new Error("Unsupported file type. Allowed: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX.");
     }
     if (file.size > MAX_UPLOAD_BYTES) {
       throw new Error("File is too large. Maximum size is 15MB.");

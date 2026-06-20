@@ -11,6 +11,7 @@ import { Heart, MessageCircle, BookOpen, Send, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
+import { DropzoneUpload } from "@/components/DropzoneUpload";
 
 export const Route = createFileRoute("/_authenticated/memories")({
   head: () => ({ meta: [{ title: "Memories Wall — SIMCOSA 84–85" }] }),
@@ -28,6 +29,7 @@ function Memories() {
   const qc = useQueryClient();
   const [posting, setPosting] = useState(false);
   const [lbIndex, setLbIndex] = useState<number | null>(null);
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
 
   const { data: memories } = useQuery({
     queryKey: ["memories"],
@@ -45,10 +47,15 @@ function Memories() {
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
+    const postFd = new FormData();
+    postFd.set("title", String(fd.get("title") || ""));
+    postFd.set("body", String(fd.get("body") || ""));
+    if (photoFiles[0]) postFd.set("image", photoFiles[0]);
     setPosting(true);
     try {
-      await postMemory({ data: { title: String(fd.get("title") || ""), body: String(fd.get("body")) } });
+      await postMemory({ data: postFd });
       form.reset();
+      setPhotoFiles([]);
       toast.success("Your memory has been shared! 💛");
       qc.invalidateQueries({ queryKey: ["memories"] });
     } catch (err) {
@@ -106,6 +113,17 @@ function Memories() {
             <div>
               <Label htmlFor="b" className="font-semibold text-gray-700">Your memory *</Label>
               <Textarea id="b" name="body" required rows={4} placeholder="Share a story, a moment, a person you miss from our batch days…" className="text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl resize-none" />
+            </div>
+            <div>
+              <Label className="font-semibold text-gray-700">Photo (optional)</Label>
+              <DropzoneUpload
+                files={photoFiles}
+                onFilesChange={setPhotoFiles}
+                accept="image/*"
+                multiple={false}
+                disabled={posting}
+                className="mt-1"
+              />
             </div>
           </div>
           <div className="mt-4 flex justify-end">

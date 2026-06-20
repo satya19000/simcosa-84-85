@@ -6,6 +6,8 @@ import { handleAuthRoute } from "./backend/auth/handlers";
 import { serveGallery } from "./backend/gallery-serve";
 import { serveBlogImage } from "./backend/blog-image-serve";
 import { serveProfilePhoto } from "./backend/profile-photo-serve";
+import { serveMemoryImage } from "./backend/memory-image-serve";
+import { serveEventCover } from "./backend/event-cover-serve";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -55,6 +57,12 @@ export default {
 
       const profilePhotoResponse = await serveProfilePhoto(request);
       if (profilePhotoResponse) return profilePhotoResponse;
+
+      const memoryImageResponse = await serveMemoryImage(request);
+      if (memoryImageResponse) return memoryImageResponse;
+
+      const eventCoverResponse = await serveEventCover(request);
+      if (eventCoverResponse) return eventCoverResponse;
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

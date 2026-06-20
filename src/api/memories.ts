@@ -2,6 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
+const MAX_MEMORY_IMAGE_BYTES = 15 * 1024 * 1024;
+const ALLOWED_MEMORY_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
 export interface MemoryComment {
   id: string;
   body: string;
@@ -27,7 +30,9 @@ export const listMemories = createServerFn({ method: "GET" })
   .handler(async (): Promise<MemoryRow[]> => {
     const res = await query<MemoryRow>(
       `SELECT
-         m.id, m.user_id, m.title, m.body, m.image_url, m.created_at,
+         m.id, m.user_id, m.title, m.body,
+         CASE WHEN m.image_data IS NOT NULL THEN '/api/memories/image/' || m.id ELSE m.image_url END AS image_url,
+         m.created_at,
          json_build_object('full_name', p.full_name) AS profiles,
          COALESCE((
            SELECT json_agg(json_build_object('user_id', ml.user_id))
@@ -52,11 +57,29 @@ export const listMemories = createServerFn({ method: "GET" })
 
 export const postMemory = createServerFn({ method: "POST" })
   .middleware([requireApproved])
-  .inputValidator((d: { title?: string; body: string }) => d)
+  .inputValidator((d: FormData) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const title = String(data.get("title") ?? "");
+    const body = String(data.get("body") ?? "");
+    if (!body.trim()) throw new Error("Memory body is required");
+
+    const file = data.get("image") as File | null;
+    let imageBytes: Buffer | null = null;
+    let imageMime: string | null = null;
+    if (file && typeof file !== "string" && file.size > 0) {
+      if (!ALLOWED_MEMORY_IMAGE_TYPES.has(file.type)) {
+        throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+      }
+      if (file.size > MAX_MEMORY_IMAGE_BYTES) {
+        throw new Error("File is too large. Maximum size is 15MB.");
+      }
+      imageBytes = Buffer.from(await file.arrayBuffer());
+      imageMime = file.type || "application/octet-stream";
+    }
+
     await query(
-      `INSERT INTO memories (user_id, title, body) VALUES ($1, $2, $3)`,
-      [context.userId, data.title || null, data.body],
+      `INSERT INTO memories (user_id, title, body, image_data, image_mime) VALUES ($1, $2, $3, $4, $5)`,
+      [context.userId, title || null, body, imageBytes, imageMime],
     );
     return { ok: true };
   });
