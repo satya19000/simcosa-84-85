@@ -4,6 +4,9 @@ import { query } from "../backend/db";
 
 export type BlogCategory = "opinions" | "poems" | "health_tips" | "memories" | "events" | "general";
 
+const MAX_BLOG_IMAGE_BYTES = 15 * 1024 * 1024;
+const ALLOWED_BLOG_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
 export interface BlogComment {
   id: string;
   body: string;
@@ -101,6 +104,12 @@ export const createBlog = createServerFn({ method: "POST" })
     let imageBytes: Buffer | null = null;
     let imageMime: string | null = null;
     if (file && typeof file !== "string" && file.size > 0) {
+      if (!ALLOWED_BLOG_IMAGE_TYPES.has(file.type)) {
+        throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+      }
+      if (file.size > MAX_BLOG_IMAGE_BYTES) {
+        throw new Error("File is too large. Maximum size is 15MB.");
+      }
       imageBytes = Buffer.from(await file.arrayBuffer());
       imageMime = file.type || "application/octet-stream";
     }

@@ -14,6 +14,8 @@ import {
   adminListGallery, adminDeleteGalleryItem,
   adminListMemories, adminDeleteMemory,
 } from "@/api/admin";
+import { uploadGalleryItem } from "@/api/gallery";
+import { postMemory } from "@/api/memories";
 import type { ApprovalStatus } from "@/backend/auth/service";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropzoneUpload } from "@/components/DropzoneUpload";
 import { toast } from "sonner";
 import { useState } from "react";
 import { format } from "date-fns";
@@ -495,6 +498,7 @@ function BlogsTab() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-blogs"], queryFn: () => adminListBlogs() });
   const del = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
     try {
       await adminDeleteBlog({ data: { id } });
       toast.success("Blog deleted");
@@ -523,7 +527,11 @@ function BlogsTab() {
 function GalleryTab() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => adminListGallery() });
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+
   const del = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
     try {
       await adminDeleteGalleryItem({ data: { id } });
       toast.success("Item deleted");
@@ -533,18 +541,62 @@ function GalleryTab() {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
   };
-  if (data?.length === 0) return <p className="text-muted-foreground">No gallery items yet.</p>;
+
+  const upload = async () => {
+    if (files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.set("file", file);
+        await uploadGalleryItem({ data: fd });
+      }
+      toast.success(`Uploaded ${files.length} item(s)`);
+      setFiles([]);
+      qc.invalidateQueries({ queryKey: ["admin-gallery"] });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
+    <div>
+      <div className="rounded-xl border border-border bg-card p-5 mb-6">
+        <h3 className="font-semibold mb-3">Upload photos/files</h3>
+        <DropzoneUpload
+          files={files}
+          onFilesChange={setFiles}
+          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+          disabled={uploading}
+        />
+        {files.length > 0 && (
+          <Button onClick={upload} disabled={uploading} className="mt-3 h-11">
+            {uploading ? "Uploading…" : `Upload ${files.length} item(s)`}
+          </Button>
+        )}
+      </div>
+    {data?.length === 0 && <p className="text-muted-foreground">No gallery items yet.</p>}
     <div className="space-y-3">
       {data?.map((g) => (
         <div key={g.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
-          <div>
-            <p className="font-semibold">{g.title || g.caption || g.storage_path} <span className="text-xs text-muted-foreground ml-1 capitalize">[{g.media_type}]</span></p>
-            <p className="text-sm text-muted-foreground">By {g.profiles?.full_name ?? "Unknown"} · {format(new Date(g.created_at), "PPP")}</p>
+          <div className="flex items-center gap-3">
+            {g.media_type === "image" ? (
+              <img src={`/api/gallery/${g.id}`} alt={g.caption ?? g.title ?? "Photo"} className="h-14 w-14 rounded-lg object-cover shrink-0" loading="lazy" />
+            ) : (
+              <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground shrink-0">Video</div>
+            )}
+            <div>
+              <p className="font-semibold">{g.title || g.caption || g.storage_path} <span className="text-xs text-muted-foreground ml-1 capitalize">[{g.media_type}]</span></p>
+              <p className="text-sm text-muted-foreground">By {g.profiles?.full_name ?? "Unknown"} · {format(new Date(g.created_at), "PPP")}</p>
+            </div>
           </div>
           <Button onClick={() => del(g.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
         </div>
       ))}
+    </div>
     </div>
   );
 }
@@ -552,7 +604,12 @@ function GalleryTab() {
 function MemoriesTab() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-memories"], queryFn: () => adminListMemories() });
+  const [files, setFiles] = useState<File[]>([]);
+  const [body, setBody] = useState("");
+  const [posting, setPosting] = useState(false);
+
   const del = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
     try {
       await adminDeleteMemory({ data: { id } });
       toast.success("Memory deleted");
@@ -562,19 +619,50 @@ function MemoriesTab() {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
   };
-  if (data?.length === 0) return <p className="text-muted-foreground">No memories yet.</p>;
+
+  const post = async () => {
+    if (!body.trim()) return;
+    setPosting(true);
+    try {
+      const fd = new FormData();
+      fd.set("body", body);
+      if (files[0]) fd.set("image", files[0]);
+      await postMemory({ data: fd });
+      setBody("");
+      setFiles([]);
+      toast.success("Memory posted");
+      qc.invalidateQueries({ queryKey: ["admin-memories"] });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setPosting(false);
+    }
+  };
+
   return (
-    <div className="space-y-3">
-      {data?.map((m) => (
-        <div key={m.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
-          <div>
-            <p className="font-semibold">{m.title || "Untitled"}</p>
-            <p className="text-sm text-muted-foreground line-clamp-1">{m.body}</p>
-            <p className="text-sm text-muted-foreground">By {m.profiles?.full_name ?? "Unknown"} · {format(new Date(m.created_at), "PPP")}</p>
+    <div>
+      <div className="rounded-xl border border-border bg-card p-5 mb-6 space-y-3">
+        <h3 className="font-semibold">Post a memory with photo</h3>
+        <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="Share a memory…" />
+        <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple={false} disabled={posting} />
+        <Button onClick={post} disabled={posting || !body.trim()} className="h-11">
+          {posting ? "Posting…" : "Post memory"}
+        </Button>
+      </div>
+      {data?.length === 0 && <p className="text-muted-foreground">No memories yet.</p>}
+      <div className="space-y-3">
+        {data?.map((m) => (
+          <div key={m.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
+            <div>
+              <p className="font-semibold">{m.title || "Untitled"}</p>
+              <p className="text-sm text-muted-foreground line-clamp-1">{m.body}</p>
+              <p className="text-sm text-muted-foreground">By {m.profiles?.full_name ?? "Unknown"} · {format(new Date(m.created_at), "PPP")}</p>
+            </div>
+            <Button onClick={() => del(m.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
           </div>
-          <Button onClick={() => del(m.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -582,26 +670,31 @@ function MemoriesTab() {
 function EventsTab() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-events"], queryFn: () => adminListEvents() });
+  const [coverFiles, setCoverFiles] = useState<File[]>([]);
+  const [creating, setCreating] = useState(false);
+
   const create = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
+    fd.set("event_date", new Date(String(fd.get("event_date"))).toISOString());
+    if (coverFiles[0]) fd.set("cover", coverFiles[0]);
+    setCreating(true);
     try {
-      await adminCreateEvent({ data: {
-        title: String(fd.get("title")),
-        description: String(fd.get("description") || ""),
-        location: String(fd.get("location") || ""),
-        event_date: new Date(String(fd.get("event_date"))).toISOString(),
-      } });
+      await adminCreateEvent({ data: fd });
       form.reset();
+      setCoverFiles([]);
       toast.success("Event created");
       qc.invalidateQueries({ queryKey: ["admin-events"] });
       qc.invalidateQueries({ queryKey: ["events"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setCreating(false);
     }
   };
   const del = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
     await adminDeleteEvent({ data: { id } });
     qc.invalidateQueries({ queryKey: ["admin-events"] });
     qc.invalidateQueries({ queryKey: ["events"] });
@@ -613,12 +706,21 @@ function EventsTab() {
         <div><Label>Date & time</Label><Input name="event_date" type="datetime-local" required className="h-11" /></div>
         <div><Label>Location</Label><Input name="location" className="h-11" /></div>
         <div className="sm:col-span-2"><Label>Description</Label><Textarea name="description" rows={3} /></div>
-        <Button type="submit" className="sm:col-span-2 h-11">Create event</Button>
+        <div className="sm:col-span-2">
+          <Label>Cover image (optional)</Label>
+          <DropzoneUpload files={coverFiles} onFilesChange={setCoverFiles} accept="image/*" multiple={false} disabled={creating} className="mt-1" />
+        </div>
+        <Button type="submit" disabled={creating} className="sm:col-span-2 h-11">
+          {creating ? "Creating…" : "Create event"}
+        </Button>
       </form>
       <div className="mt-6 space-y-3">
         {data?.map((e) => (
-          <div key={e.id} className="rounded-lg border border-border bg-card p-4 flex justify-between gap-3">
-            <div><p className="font-semibold">{e.title}</p><p className="text-sm text-muted-foreground">{format(new Date(e.event_date), "PPP p")}</p></div>
+          <div key={e.id} className="rounded-lg border border-border bg-card p-4 flex justify-between gap-3 items-center">
+            <div className="flex items-center gap-3">
+              {e.cover_url && <img src={e.cover_url} alt={e.title} className="h-12 w-12 rounded-lg object-cover shrink-0" loading="lazy" />}
+              <div><p className="font-semibold">{e.title}</p><p className="text-sm text-muted-foreground">{format(new Date(e.event_date), "PPP p")}</p></div>
+            </div>
             <Button variant="outline" onClick={() => del(e.id)}>Delete</Button>
           </div>
         ))}

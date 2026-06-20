@@ -105,9 +105,13 @@ CREATE TABLE IF NOT EXISTS events (
   location text,
   event_date timestamptz NOT NULL,
   cover_url text,
+  cover_data bytea,
+  cover_mime text,
   created_by varchar REFERENCES users(id),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE events ADD COLUMN IF NOT EXISTS cover_data bytea;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS cover_mime text;
 
 CREATE TABLE IF NOT EXISTS event_rsvps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -198,8 +202,12 @@ CREATE TABLE IF NOT EXISTS memories (
   title text,
   body text NOT NULL,
   image_url text,
+  image_data bytea,
+  image_mime text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS image_data bytea;
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS image_mime text;
 
 CREATE TABLE IF NOT EXISTS memory_likes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

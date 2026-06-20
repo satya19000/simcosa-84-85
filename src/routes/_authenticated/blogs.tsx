@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PenLine, Star, ArrowRight, BookOpen } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { DropzoneUpload } from "@/components/DropzoneUpload";
 
 export const Route = createFileRoute("/_authenticated/blogs")({
   head: () => ({
@@ -21,6 +22,9 @@ export const Route = createFileRoute("/_authenticated/blogs")({
   }),
   component: Blogs,
 });
+
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const MAX_UPLOAD_MB = 15;
 
 export const CATEGORIES: { value: BlogCategory; label: string }[] = [
   { value: "opinions", label: "Opinions" },
@@ -81,6 +85,7 @@ function Blogs() {
   const [showForm, setShowForm] = useState(false);
   const [posting, setPosting] = useState(false);
   const [category, setCategory] = useState<BlogCategory>("general");
+  const [coverFiles, setCoverFiles] = useState<File[]>([]);
 
   const { data: blogs } = useQuery({
     queryKey: ["blogs", activeCategory],
@@ -92,11 +97,25 @@ function Blogs() {
     const form = e.currentTarget;
     const fd = new FormData(form);
     fd.set("category", category);
+    fd.delete("image");
+    const file = coverFiles[0];
+    if (file) {
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        toast.error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+        return;
+      }
+      if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+        toast.error(`File is too large. Maximum size is ${MAX_UPLOAD_MB}MB.`);
+        return;
+      }
+      fd.set("image", file);
+    }
     setPosting(true);
     try {
       await createBlog({ data: fd });
       form.reset();
       setCategory("general");
+      setCoverFiles([]);
       setShowForm(false);
       toast.success("Your blog has been published! 📝");
       qc.invalidateQueries({ queryKey: ["blogs"] });
@@ -157,8 +176,15 @@ function Blogs() {
               <Textarea id="content" name="content" required rows={6} placeholder="Write your blog…" className="text-base mt-1 border-amber-200 rounded-xl resize-none" />
             </div>
             <div>
-              <Label htmlFor="image" className="font-semibold text-gray-700">Cover image (optional)</Label>
-              <Input id="image" name="image" type="file" accept="image/*" className="h-12 mt-1 border-amber-200 rounded-xl" />
+              <Label className="font-semibold text-gray-700">Cover image (optional)</Label>
+              <DropzoneUpload
+                files={coverFiles}
+                onFilesChange={setCoverFiles}
+                accept="image/*"
+                multiple={false}
+                disabled={posting}
+                className="mt-1"
+              />
             </div>
             <div className="flex justify-end">
               <Button type="submit" disabled={posting} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl">

@@ -448,10 +448,68 @@ async function serveProfilePhoto(request) {
     }
   });
 }
+async function serveMemoryImage(request) {
+  const { pathname } = new URL(request.url);
+  const match = pathname.match(/^\/api\/memories\/image\/([^/]+)$/);
+  if (!match) return null;
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const session = await getSession(cookies[SESSION_COOKIE]);
+  if (!session) return new Response("Unauthorized", { status: 401 });
+  const [profile, admin] = await Promise.all([
+    getProfile(session.userId),
+    isAdmin(session.userId)
+  ]);
+  if (!admin && profile?.approval_status !== "approved") {
+    return new Response("Forbidden", { status: 403 });
+  }
+  const id = decodeURIComponent(match[1]);
+  const res = await query(
+    `SELECT image_data, image_mime FROM memories WHERE id = $1`,
+    [id]
+  );
+  const row = res.rows[0];
+  if (!row || !row.image_data) return new Response("Not found", { status: 404 });
+  return new Response(new Uint8Array(row.image_data), {
+    status: 200,
+    headers: {
+      "Content-Type": row.image_mime ?? "application/octet-stream",
+      "Cache-Control": "private, max-age=3600"
+    }
+  });
+}
+async function serveEventCover(request) {
+  const { pathname } = new URL(request.url);
+  const match = pathname.match(/^\/api\/events\/cover\/([^/]+)$/);
+  if (!match) return null;
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const session = await getSession(cookies[SESSION_COOKIE]);
+  if (!session) return new Response("Unauthorized", { status: 401 });
+  const [profile, admin] = await Promise.all([
+    getProfile(session.userId),
+    isAdmin(session.userId)
+  ]);
+  if (!admin && profile?.approval_status !== "approved") {
+    return new Response("Forbidden", { status: 403 });
+  }
+  const id = decodeURIComponent(match[1]);
+  const res = await query(
+    `SELECT cover_data, cover_mime FROM events WHERE id = $1`,
+    [id]
+  );
+  const row = res.rows[0];
+  if (!row || !row.cover_data) return new Response("Not found", { status: 404 });
+  return new Response(new Uint8Array(row.cover_data), {
+    status: 200,
+    headers: {
+      "Content-Type": row.cover_mime ?? "application/octet-stream",
+      "Cache-Control": "private, max-age=3600"
+    }
+  });
+}
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-BjolCwuX.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-C6pwe8kY.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
@@ -482,6 +540,10 @@ const server = {
       if (blogImageResponse) return blogImageResponse;
       const profilePhotoResponse = await serveProfilePhoto(request);
       if (profilePhotoResponse) return profilePhotoResponse;
+      const memoryImageResponse = await serveMemoryImage(request);
+      if (memoryImageResponse) return memoryImageResponse;
+      const eventCoverResponse = await serveEventCover(request);
+      if (eventCoverResponse) return eventCoverResponse;
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

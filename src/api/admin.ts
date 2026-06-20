@@ -294,23 +294,49 @@ export const adminDemoteAdmin = createServerFn({ method: "POST" })
   });
 
 // ---- Events ----
+const MAX_EVENT_COVER_BYTES = 15 * 1024 * 1024;
+const ALLOWED_EVENT_COVER_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
 export const adminListEvents = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .handler(async (): Promise<EventRow[]> => {
-    const res = await query<EventRow>(`SELECT * FROM events ORDER BY event_date DESC`);
+    const res = await query<EventRow>(
+      `SELECT id, title, description, location, event_date,
+         CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE cover_url END AS cover_url,
+         created_by, created_at
+       FROM events ORDER BY event_date DESC`,
+    );
     return res.rows;
   });
 
 export const adminCreateEvent = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
-  .inputValidator(
-    (d: { title: string; description?: string; location?: string; event_date: string }) => d,
-  )
+  .inputValidator((d: FormData) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const title = String(data.get("title") ?? "").trim();
+    const description = String(data.get("description") ?? "").trim();
+    const location = String(data.get("location") ?? "").trim();
+    const eventDate = String(data.get("event_date") ?? "");
+    if (!title || !eventDate) throw new Error("Title and date are required");
+
+    const file = data.get("cover") as File | null;
+    let coverBytes: Buffer | null = null;
+    let coverMime: string | null = null;
+    if (file && typeof file !== "string" && file.size > 0) {
+      if (!ALLOWED_EVENT_COVER_TYPES.has(file.type)) {
+        throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+      }
+      if (file.size > MAX_EVENT_COVER_BYTES) {
+        throw new Error("File is too large. Maximum size is 15MB.");
+      }
+      coverBytes = Buffer.from(await file.arrayBuffer());
+      coverMime = file.type || "application/octet-stream";
+    }
+
     await query(
-      `INSERT INTO events (title, description, location, event_date, created_by)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [data.title, data.description || null, data.location || null, data.event_date, context.userId],
+      `INSERT INTO events (title, description, location, event_date, cover_data, cover_mime, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [title, description || null, location || null, eventDate, coverBytes, coverMime, context.userId],
     );
     return { ok: true };
   });
