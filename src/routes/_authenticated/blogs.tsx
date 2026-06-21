@@ -12,6 +12,8 @@ import { PenLine, Star, ArrowRight, BookOpen } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
+import { uploadToFirebaseStorage } from "@/lib/storage";
+import { compressImage } from "@/lib/image-compress";
 
 export const Route = createFileRoute("/_authenticated/blogs")({
   head: () => ({
@@ -94,11 +96,10 @@ function Blogs() {
 
   const onPublish = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!user) return;
     const form = e.currentTarget;
     const fd = new FormData(form);
-    fd.set("category", category);
-    fd.delete("image");
-    const file = coverFiles[0];
+    let file = coverFiles[0];
     if (file) {
       if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
         toast.error("Unsupported image format. Please use JPG, PNG, or WEBP.");
@@ -108,11 +109,27 @@ function Blogs() {
         toast.error(`File is too large. Maximum size is ${MAX_UPLOAD_MB}MB.`);
         return;
       }
-      fd.set("image", file);
     }
     setPosting(true);
     try {
-      await createBlog({ data: fd });
+      let uploaded: { url: string; path: string } | null = null;
+      if (file) {
+        file = await compressImage(file);
+        uploaded = await uploadToFirebaseStorage(file, "blog-images", user.id);
+      }
+      await createBlog({
+        data: {
+          title: String(fd.get("title") || ""),
+          content: String(fd.get("content") || ""),
+          excerpt: String(fd.get("excerpt") || "") || undefined,
+          category,
+          url: uploaded?.url,
+          storagePath: uploaded?.path,
+          fileName: file?.name,
+          mimeType: file?.type,
+          fileSize: file?.size,
+        },
+      });
       form.reset();
       setCategory("general");
       setCoverFiles([]);

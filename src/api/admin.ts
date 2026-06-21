@@ -302,41 +302,56 @@ export const adminListEvents = createServerFn({ method: "GET" })
   .handler(async (): Promise<EventRow[]> => {
     const res = await query<EventRow>(
       `SELECT id, title, description, location, event_date,
-         CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE cover_url END AS cover_url,
+         COALESCE(cover_url, CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE NULL END) AS cover_url,
          created_by, created_at
        FROM events ORDER BY event_date DESC`,
     );
     return res.rows;
   });
 
+export interface AdminCreateEventInput {
+  title: string;
+  description?: string;
+  location?: string;
+  event_date: string;
+  url?: string;
+  storagePath?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+}
+
 export const adminCreateEvent = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
-  .inputValidator((d: FormData) => d)
+  .inputValidator((d: AdminCreateEventInput) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
-    const title = String(data.get("title") ?? "").trim();
-    const description = String(data.get("description") ?? "").trim();
-    const location = String(data.get("location") ?? "").trim();
-    const eventDate = String(data.get("event_date") ?? "");
+    const title = data.title.trim();
+    const description = (data.description ?? "").trim();
+    const location = (data.location ?? "").trim();
+    const eventDate = data.event_date;
     if (!title || !eventDate) throw new Error("Title and date are required");
 
-    const file = data.get("cover") as File | null;
-    let coverBytes: Buffer | null = null;
-    let coverMime: string | null = null;
-    if (file && typeof file !== "string" && file.size > 0) {
-      if (!ALLOWED_EVENT_COVER_TYPES.has(file.type)) {
+    let coverUrl: string | null = null;
+    let fbStoragePath: string | null = null;
+    let fileName: string | null = null;
+    let fileSize: number | null = null;
+    if (data.url) {
+      if (!data.mimeType || !ALLOWED_EVENT_COVER_TYPES.has(data.mimeType)) {
         throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
       }
-      if (file.size > MAX_EVENT_COVER_BYTES) {
-        throw new Error("File is too large. Maximum size is 15MB.");
+      if ((data.fileSize ?? 0) > MAX_EVENT_COVER_BYTES) {
+        throw new Error("This file is too large. Please upload a smaller image or compressed version.");
       }
-      coverBytes = Buffer.from(await file.arrayBuffer());
-      coverMime = file.type || "application/octet-stream";
+      coverUrl = data.url;
+      fbStoragePath = data.storagePath || null;
+      fileName = data.fileName || null;
+      fileSize = data.fileSize ?? null;
     }
 
     await query(
-      `INSERT INTO events (title, description, location, event_date, cover_data, cover_mime, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [title, description || null, location || null, eventDate, coverBytes, coverMime, context.userId],
+      `INSERT INTO events (title, description, location, event_date, cover_url, fb_storage_path, file_name, file_size, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [title, description || null, location || null, eventDate, coverUrl, fbStoragePath, fileName, fileSize, context.userId],
     );
     return { ok: true };
   });
@@ -344,9 +359,14 @@ export const adminCreateEvent = createServerFn({ method: "POST" })
 export const adminDeleteEvent = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data }): Promise<{ ok: true }> => {
+  .handler(async ({ data }): Promise<{ ok: true; fbStoragePath: string | null }> => {
+    const owned = await query<{ fb_storage_path: string | null }>(
+      `SELECT fb_storage_path FROM events WHERE id = $1`,
+      [data.id],
+    );
+    const row = owned.rows[0];
     await query(`DELETE FROM events WHERE id = $1`, [data.id]);
-    return { ok: true };
+    return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
   });
 
 // ---- Announcements ----
@@ -482,9 +502,14 @@ export const adminListBlogs = createServerFn({ method: "GET" })
 export const adminDeleteBlog = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data }): Promise<{ ok: true }> => {
+  .handler(async ({ data }): Promise<{ ok: true; fbStoragePath: string | null }> => {
+    const owned = await query<{ fb_storage_path: string | null }>(
+      `SELECT fb_storage_path FROM blogs WHERE id = $1`,
+      [data.id],
+    );
+    const row = owned.rows[0];
     await query(`DELETE FROM blogs WHERE id = $1`, [data.id]);
-    return { ok: true };
+    return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
   });
 
 // ---- Gallery (moderation) ----
@@ -494,6 +519,7 @@ export interface AdminGalleryRow {
   caption: string | null;
   media_type: string;
   storage_path: string;
+  file_url: string | null;
   created_at: string;
   uploaded_by: string | null;
   profiles: { full_name: string | null } | null;
@@ -503,10 +529,13 @@ export const adminListGallery = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .handler(async (): Promise<AdminGalleryRow[]> => {
     const res = await query<AdminGalleryRow>(
-      `SELECT g.id, g.title, g.caption, g.media_type, g.storage_path, g.created_at, g.uploaded_by,
+      `SELECT g.id, g.title, g.caption, g.media_type, g.storage_path,
+         COALESCE(g.file_url, CASE WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id ELSE NULL END) AS file_url,
+         g.created_at, g.uploaded_by,
          json_build_object('full_name', p.full_name) AS profiles
        FROM gallery_items g
        LEFT JOIN profiles p ON p.id = g.uploaded_by
+       WHERE g.deleted_at IS NULL
        ORDER BY g.created_at DESC`,
     );
     return res.rows;
@@ -515,9 +544,14 @@ export const adminListGallery = createServerFn({ method: "GET" })
 export const adminDeleteGalleryItem = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data }): Promise<{ ok: true }> => {
+  .handler(async ({ data }): Promise<{ ok: true; fbStoragePath: string | null }> => {
+    const owned = await query<{ fb_storage_path: string | null }>(
+      `SELECT fb_storage_path FROM gallery_items WHERE id = $1`,
+      [data.id],
+    );
+    const row = owned.rows[0];
     await query(`DELETE FROM gallery_items WHERE id = $1`, [data.id]);
-    return { ok: true };
+    return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
   });
 
 // ---- Memories (moderation) ----
@@ -546,7 +580,12 @@ export const adminListMemories = createServerFn({ method: "GET" })
 export const adminDeleteMemory = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data }): Promise<{ ok: true }> => {
+  .handler(async ({ data }): Promise<{ ok: true; fbStoragePath: string | null }> => {
+    const owned = await query<{ fb_storage_path: string | null }>(
+      `SELECT fb_storage_path FROM memories WHERE id = $1`,
+      [data.id],
+    );
+    const row = owned.rows[0];
     await query(`DELETE FROM memories WHERE id = $1`, [data.id]);
-    return { ok: true };
+    return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
   });

@@ -25,7 +25,7 @@ export const listEvents = createServerFn({ method: "GET" })
   .handler(async (): Promise<EventRow[]> => {
     const res = await query<EventRow>(
       `SELECT id, title, description, location, event_date,
-         CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE cover_url END AS cover_url,
+         COALESCE(cover_url, CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE NULL END) AS cover_url,
          created_by, created_at
        FROM events ORDER BY event_date ASC`,
     );

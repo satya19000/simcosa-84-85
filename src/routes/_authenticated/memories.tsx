@@ -12,6 +12,11 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
+import { uploadToFirebaseStorage, deleteFromFirebaseStorage } from "@/lib/storage";
+import { compressImage } from "@/lib/image-compress";
+
+const ALLOWED_MEMORY_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const MAX_MEMORY_UPLOAD_MB = 15;
 
 export const Route = createFileRoute("/_authenticated/memories")({
   head: () => ({ meta: [{ title: "Memories Wall — SIMCOSA 84–85" }] }),
@@ -45,15 +50,42 @@ function Memories() {
 
   const onPost = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!user) return;
     const form = e.currentTarget;
     const fd = new FormData(form);
-    const postFd = new FormData();
-    postFd.set("title", String(fd.get("title") || ""));
-    postFd.set("body", String(fd.get("body") || ""));
-    if (photoFiles[0]) postFd.set("image", photoFiles[0]);
+    const title = String(fd.get("title") || "");
+    const body = String(fd.get("body") || "");
+
+    let file = photoFiles[0];
+    if (file) {
+      if (!ALLOWED_MEMORY_IMAGE_TYPES.has(file.type)) {
+        toast.error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+        return;
+      }
+      if (file.size > MAX_MEMORY_UPLOAD_MB * 1024 * 1024) {
+        toast.error(`"${file.name}" is too large. Maximum size is ${MAX_MEMORY_UPLOAD_MB}MB.`);
+        return;
+      }
+    }
+
     setPosting(true);
     try {
-      await postMemory({ data: postFd });
+      let uploaded: { url: string; path: string } | null = null;
+      if (file) {
+        file = await compressImage(file);
+        uploaded = await uploadToFirebaseStorage(file, "memories", user.id);
+      }
+      await postMemory({
+        data: {
+          title: title || undefined,
+          body,
+          url: uploaded?.url,
+          storagePath: uploaded?.path,
+          fileName: file?.name,
+          mimeType: file?.type,
+          fileSize: file?.size,
+        },
+      });
       form.reset();
       setPhotoFiles([]);
       toast.success("Your memory has been shared! 💛");
@@ -77,9 +109,14 @@ function Memories() {
   const onDeleteMemory = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
     try {
-      await deleteMemory({ data: { id } });
+      const res = await deleteMemory({ data: { id } });
       toast.success("Memory deleted");
       qc.invalidateQueries({ queryKey: ["memories"] });
+      if (res.fbStoragePath) {
+        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+          console.error("[memories] failed to delete storage object:", err),
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
     }

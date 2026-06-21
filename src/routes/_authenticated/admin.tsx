@@ -16,6 +16,8 @@ import {
 } from "@/api/admin";
 import { uploadGalleryItem } from "@/api/gallery";
 import { postMemory } from "@/api/memories";
+import { uploadToFirebaseStorage, deleteFromFirebaseStorage } from "@/lib/storage";
+import { compressImage } from "@/lib/image-compress";
 import type { ApprovalStatus } from "@/backend/auth/service";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -524,7 +526,10 @@ function BlogsTab() {
   );
 }
 
+const MAX_ADMIN_UPLOAD_BYTES = 15 * 1024 * 1024;
+
 function GalleryTab() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => adminListGallery() });
   const [files, setFiles] = useState<File[]>([]);
@@ -533,23 +538,38 @@ function GalleryTab() {
   const del = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
     try {
-      await adminDeleteGalleryItem({ data: { id } });
+      const res = await adminDeleteGalleryItem({ data: { id } });
       toast.success("Item deleted");
       qc.invalidateQueries({ queryKey: ["admin-gallery"] });
       qc.invalidateQueries({ queryKey: ["gallery"] });
+      if (res.fbStoragePath) {
+        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+          console.error("[admin/gallery] failed to delete storage object:", err),
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
   };
 
   const upload = async () => {
-    if (files.length === 0) return;
+    if (files.length === 0 || !user) return;
+    for (const file of files) {
+      if (file.size > MAX_ADMIN_UPLOAD_BYTES) {
+        toast.error(`"${file.name}" is too large. Please upload a smaller image or compressed version.`);
+        return;
+      }
+    }
     setUploading(true);
     try {
-      for (const file of files) {
-        const fd = new FormData();
-        fd.set("file", file);
-        await uploadGalleryItem({ data: fd });
+      for (let file of files) {
+        if (file.type.startsWith("image/")) {
+          file = await compressImage(file);
+        }
+        const { url, path } = await uploadToFirebaseStorage(file, "gallery", user.id);
+        await uploadGalleryItem({
+          data: { url, storagePath: path, fileName: file.name, mimeType: file.type, fileSize: file.size },
+        });
       }
       toast.success(`Uploaded ${files.length} item(s)`);
       setFiles([]);
@@ -584,7 +604,7 @@ function GalleryTab() {
         <div key={g.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
           <div className="flex items-center gap-3">
             {g.media_type === "image" ? (
-              <img src={`/api/gallery/${g.id}`} alt={g.caption ?? g.title ?? "Photo"} className="h-14 w-14 rounded-lg object-cover shrink-0" loading="lazy" />
+              <img src={g.file_url ?? `/api/gallery/${g.id}`} alt={g.caption ?? g.title ?? "Photo"} className="h-14 w-14 rounded-lg object-cover shrink-0" loading="lazy" />
             ) : (
               <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground shrink-0">Video</div>
             )}
@@ -602,6 +622,7 @@ function GalleryTab() {
 }
 
 function MemoriesTab() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-memories"], queryFn: () => adminListMemories() });
   const [files, setFiles] = useState<File[]>([]);
@@ -611,23 +632,44 @@ function MemoriesTab() {
   const del = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
     try {
-      await adminDeleteMemory({ data: { id } });
+      const res = await adminDeleteMemory({ data: { id } });
       toast.success("Memory deleted");
       qc.invalidateQueries({ queryKey: ["admin-memories"] });
       qc.invalidateQueries({ queryKey: ["memories"] });
+      if (res.fbStoragePath) {
+        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+          console.error("[admin/memories] failed to delete storage object:", err),
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
   };
 
   const post = async () => {
-    if (!body.trim()) return;
+    if (!body.trim() || !user) return;
+    let file = files[0];
+    if (file && file.size > MAX_ADMIN_UPLOAD_BYTES) {
+      toast.error("This file is too large. Please upload a smaller image or compressed version.");
+      return;
+    }
     setPosting(true);
     try {
-      const fd = new FormData();
-      fd.set("body", body);
-      if (files[0]) fd.set("image", files[0]);
-      await postMemory({ data: fd });
+      let uploaded: { url: string; path: string } | null = null;
+      if (file) {
+        file = await compressImage(file);
+        uploaded = await uploadToFirebaseStorage(file, "memories", user.id);
+      }
+      await postMemory({
+        data: {
+          body,
+          url: uploaded?.url,
+          storagePath: uploaded?.path,
+          fileName: file?.name,
+          mimeType: file?.type,
+          fileSize: file?.size,
+        },
+      });
       setBody("");
       setFiles([]);
       toast.success("Memory posted");
@@ -668,6 +710,7 @@ function MemoriesTab() {
 }
 
 function EventsTab() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-events"], queryFn: () => adminListEvents() });
   const [coverFiles, setCoverFiles] = useState<File[]>([]);
@@ -675,13 +718,37 @@ function EventsTab() {
 
   const create = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!user) return;
     const form = e.currentTarget;
     const fd = new FormData(form);
-    fd.set("event_date", new Date(String(fd.get("event_date"))).toISOString());
-    if (coverFiles[0]) fd.set("cover", coverFiles[0]);
+    const eventDate = new Date(String(fd.get("event_date"))).toISOString();
+
+    let file = coverFiles[0];
+    if (file && file.size > MAX_ADMIN_UPLOAD_BYTES) {
+      toast.error("This file is too large. Please upload a smaller image or compressed version.");
+      return;
+    }
+
     setCreating(true);
     try {
-      await adminCreateEvent({ data: fd });
+      let uploaded: { url: string; path: string } | null = null;
+      if (file) {
+        file = await compressImage(file);
+        uploaded = await uploadToFirebaseStorage(file, "event-covers", user.id);
+      }
+      await adminCreateEvent({
+        data: {
+          title: String(fd.get("title") || ""),
+          description: String(fd.get("description") || "") || undefined,
+          location: String(fd.get("location") || "") || undefined,
+          event_date: eventDate,
+          url: uploaded?.url,
+          storagePath: uploaded?.path,
+          fileName: file?.name,
+          mimeType: file?.type,
+          fileSize: file?.size,
+        },
+      });
       form.reset();
       setCoverFiles([]);
       toast.success("Event created");
@@ -695,9 +762,14 @@ function EventsTab() {
   };
   const del = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
-    await adminDeleteEvent({ data: { id } });
+    const res = await adminDeleteEvent({ data: { id } });
     qc.invalidateQueries({ queryKey: ["admin-events"] });
     qc.invalidateQueries({ queryKey: ["events"] });
+    if (res.fbStoragePath) {
+      deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+        console.error("[admin/events] failed to delete storage object:", err),
+      );
+    }
   };
   return (
     <div>
