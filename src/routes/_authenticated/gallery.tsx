@@ -1,12 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { listGallery, uploadGalleryItem, deleteGalleryItem } from "@/api/gallery";
+import {
+  listGallery,
+  uploadGalleryItem,
+  deleteGalleryItem,
+  toggleGalleryLike,
+  addGalleryComment,
+  deleteGalleryComment,
+  type GalleryRow,
+  type GalleryComment,
+} from "@/api/gallery";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Camera, Upload, Film, Image, FileText, Trash2 } from "lucide-react";
+import { Upload, Film, Image, FileText, Trash2, Heart, MessageCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
@@ -119,6 +128,19 @@ function Gallery() {
     caption: it.caption ?? undefined,
   }));
 
+  const toggleLike = async (id: string, liked: boolean) => {
+    if (!user) {
+      toast.error("Please sign in to like items.");
+      return;
+    }
+    try {
+      await toggleGalleryLike({ data: { galleryItemId: id, liked } });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
       {/* Header */}
@@ -230,6 +252,7 @@ function Gallery() {
                   onOpen={() => setLb({ images: uploadedImages, index: idx })}
                   canDelete={isAdmin || it.uploaded_by === user?.id}
                   onDelete={() => onDelete(it.id)}
+                  onToggleLike={toggleLike}
                 />
               ))}
             </div>
@@ -250,6 +273,7 @@ function Gallery() {
                   item={it}
                   canDelete={isAdmin || it.uploaded_by === user?.id}
                   onDelete={() => onDelete(it.id)}
+                  onToggleLike={toggleLike}
                 />
               ))}
             </div>
@@ -303,7 +327,132 @@ function Gallery() {
         index={lb?.index ?? null}
         onClose={() => setLb(null)}
         onIndexChange={(i) => setLb((s) => (s ? { ...s, index: i } : s))}
+        renderFooter={(i) => {
+          const it = images[i];
+          if (!it) return null;
+          return (
+            <div className="rounded-2xl bg-white/95 backdrop-blur p-3">
+              <LikeCommentBar item={it} onToggleLike={toggleLike} />
+              <GalleryComments item={it} />
+            </div>
+          );
+        }}
       />
+    </div>
+  );
+}
+
+function LikeCommentBar({
+  item,
+  onToggleLike,
+  onToggleComments,
+  showComments,
+}: {
+  item: GalleryRow;
+  onToggleLike: (id: string, liked: boolean) => void;
+  onToggleComments?: () => void;
+  showComments?: boolean;
+}) {
+  const { user } = useAuth();
+  const liked = !!user && (item.gallery_likes ?? []).some((l) => l.user_id === user.id);
+  const likeCount = item.gallery_likes?.length ?? 0;
+  const commentCount = item.gallery_comments?.length ?? 0;
+  return (
+    <div className="flex items-center gap-5 px-1 py-1">
+      <button
+        type="button"
+        onClick={() => onToggleLike(item.id, liked)}
+        className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${liked ? "text-rose-500" : "text-gray-400 hover:text-rose-400"}`}
+      >
+        <Heart className={`h-5 w-5 ${liked ? "fill-rose-500" : ""}`} />
+        {likeCount} {liked ? "Liked" : "Like"}
+      </button>
+      <button
+        type="button"
+        onClick={onToggleComments}
+        className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${showComments ? "text-amber-600" : "text-gray-400 hover:text-amber-500"}`}
+      >
+        <MessageCircle className="h-5 w-5" />
+        {commentCount} {commentCount === 1 ? "Comment" : "Comments"}
+      </button>
+    </div>
+  );
+}
+
+function GalleryComments({ item }: { item: GalleryRow }) {
+  const { user, isApproved, isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const comments: GalleryComment[] = item.gallery_comments ?? [];
+
+  const add = async () => {
+    if (!text.trim()) return;
+    setSending(true);
+    try {
+      await addGalleryComment({ data: { galleryItemId: item.id, comment: text } });
+      setText("");
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const onDeleteComment = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
+    try {
+      await deleteGalleryComment({ data: { id } });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    }
+  };
+
+  return (
+    <div className="px-1 pt-2 space-y-2">
+      {comments.length > 0 && (
+        <div className="space-y-2 max-h-48 overflow-y-auto bg-amber-50/60 rounded-xl p-2">
+          {comments.map((c) => (
+            <div key={c.id} className="flex items-start justify-between gap-2 text-sm bg-white rounded-lg px-3 py-2 border border-amber-100">
+              <p className="min-w-0">
+                <span className="font-bold text-gray-800">{c.profiles?.full_name ?? "Member"}: </span>
+                <span className="text-gray-600">{c.comment}</span>
+              </p>
+              {(isAdmin || c.user_id === user?.id) && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteComment(c.id)}
+                  aria-label="Delete comment"
+                  className="text-gray-300 hover:text-red-600 transition-colors shrink-0"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!user && <p className="text-xs text-gray-400 px-1">Please sign in to comment.</p>}
+      {user && !isApproved && !isAdmin && (
+        <p className="text-xs text-gray-400 px-1">Admin approval required to comment.</p>
+      )}
+      {user && (isApproved || isAdmin) && (
+        <div className="flex gap-2">
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && add()}
+            placeholder="Write a comment…"
+            className="h-10 text-sm rounded-xl border-amber-200"
+          />
+          <Button onClick={add} disabled={sending || !text.trim()} className="h-10 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl px-3">
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -313,12 +462,15 @@ function GalleryItem({
   onOpen,
   canDelete,
   onDelete,
+  onToggleLike,
 }: {
-  item: { id: string; storage_path: string; media_type: string; caption: string | null; file_url: string | null };
+  item: GalleryRow;
   onOpen?: () => void;
   canDelete?: boolean;
   onDelete?: () => void;
+  onToggleLike: (id: string, liked: boolean) => void;
 }) {
+  const [showComments, setShowComments] = useState(false);
   const url = item.file_url ?? `/api/gallery/${item.id}`;
   const isVideo = item.media_type === "video";
   return (
@@ -348,7 +500,16 @@ function GalleryItem({
           )
         }
       </div>
-      {item.caption && <p className="p-3 text-sm text-gray-600 font-medium">{item.caption}</p>}
+      {item.caption && <p className="px-3 pt-3 text-sm text-gray-600 font-medium">{item.caption}</p>}
+      <div className="px-2 pb-2 pt-1 border-t border-amber-50 mt-2">
+        <LikeCommentBar
+          item={item}
+          onToggleLike={onToggleLike}
+          showComments={showComments}
+          onToggleComments={() => setShowComments((v) => !v)}
+        />
+        {showComments && <GalleryComments item={item} />}
+      </div>
     </div>
   );
 }
