@@ -10,6 +10,8 @@ import { Camera, Upload, Film, Image, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
+import { uploadToFirebaseStorage, deleteFromFirebaseStorage } from "@/lib/storage";
+import { compressImage } from "@/lib/image-compress";
 
 export const Route = createFileRoute("/_authenticated/gallery")({
   head: () => ({ meta: [{ title: "Photo & Video Gallery — SIMCOSA 84–85" }] }),
@@ -61,10 +63,21 @@ function Gallery() {
     setUploadProgress({ done: 0, total: files.length });
     try {
       for (let i = 0; i < files.length; i++) {
-        const fd = new FormData();
-        fd.set("file", files[i]);
-        if (caption) fd.set("caption", caption);
-        await uploadGalleryItem({ data: fd });
+        let file = files[i];
+        if (file.type.startsWith("image/")) {
+          file = await compressImage(file);
+        }
+        const { url, path } = await uploadToFirebaseStorage(file, "gallery", user.id);
+        await uploadGalleryItem({
+          data: {
+            url,
+            storagePath: path,
+            fileName: file.name,
+            mimeType: file.type,
+            fileSize: file.size,
+            caption: caption || undefined,
+          },
+        });
         setUploadProgress({ done: i + 1, total: files.length });
       }
       toast.success(`Uploaded ${files.length} item(s) successfully!`);
@@ -87,16 +100,21 @@ function Gallery() {
   const onDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
     try {
-      await deleteGalleryItem({ data: { id } });
+      const res = await deleteGalleryItem({ data: { id } });
       toast.success("Item deleted");
       qc.invalidateQueries({ queryKey: ["gallery"] });
+      if (res.fbStoragePath) {
+        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+          console.error("[gallery] failed to delete storage object:", err),
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   };
 
   const uploadedImages: LightboxImage[] = images.map(it => ({
-    src: `/api/gallery/${it.id}`,
+    src: it.file_url ?? `/api/gallery/${it.id}`,
     alt: it.caption ?? "Photo",
     caption: it.caption ?? undefined,
   }));
@@ -255,7 +273,7 @@ function Gallery() {
                     <FileText className="h-6 w-6 text-amber-500" />
                   </div>
                   <a
-                    href={`/api/gallery/${it.id}`}
+                    href={it.file_url ?? `/api/gallery/${it.id}`}
                     target="_blank"
                     rel="noreferrer"
                     className="flex-1 min-w-0"
@@ -296,12 +314,12 @@ function GalleryItem({
   canDelete,
   onDelete,
 }: {
-  item: { id: string; storage_path: string; media_type: string; caption: string | null };
+  item: { id: string; storage_path: string; media_type: string; caption: string | null; file_url: string | null };
   onOpen?: () => void;
   canDelete?: boolean;
   onDelete?: () => void;
 }) {
-  const url = `/api/gallery/${item.id}`;
+  const url = item.file_url ?? `/api/gallery/${item.id}`;
   const isVideo = item.media_type === "video";
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-sm border border-amber-100 hover:shadow-md transition-shadow group">

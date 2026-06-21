@@ -55,31 +55,45 @@ export const listMemories = createServerFn({ method: "GET" })
     return res.rows;
   });
 
+export interface PostMemoryInput {
+  title?: string;
+  body: string;
+  url?: string;
+  storagePath?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+}
+
 export const postMemory = createServerFn({ method: "POST" })
   .middleware([requireApproved])
-  .inputValidator((d: FormData) => d)
+  .inputValidator((d: PostMemoryInput) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
-    const title = String(data.get("title") ?? "");
-    const body = String(data.get("body") ?? "");
+    const title = data.title ?? "";
+    const body = data.body ?? "";
     if (!body.trim()) throw new Error("Memory body is required");
 
-    const file = data.get("image") as File | null;
-    let imageBytes: Buffer | null = null;
-    let imageMime: string | null = null;
-    if (file && typeof file !== "string" && file.size > 0) {
-      if (!ALLOWED_MEMORY_IMAGE_TYPES.has(file.type)) {
+    let imageUrl: string | null = null;
+    let fbStoragePath: string | null = null;
+    let fileName: string | null = null;
+    let fileSize: number | null = null;
+    if (data.url) {
+      if (!data.mimeType || !ALLOWED_MEMORY_IMAGE_TYPES.has(data.mimeType)) {
         throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
       }
-      if (file.size > MAX_MEMORY_IMAGE_BYTES) {
-        throw new Error("File is too large. Maximum size is 15MB.");
+      if ((data.fileSize ?? 0) > MAX_MEMORY_IMAGE_BYTES) {
+        throw new Error("This file is too large. Please upload a smaller image or compressed version.");
       }
-      imageBytes = Buffer.from(await file.arrayBuffer());
-      imageMime = file.type || "application/octet-stream";
+      imageUrl = data.url;
+      fbStoragePath = data.storagePath || null;
+      fileName = data.fileName || null;
+      fileSize = data.fileSize ?? null;
     }
 
     await query(
-      `INSERT INTO memories (user_id, title, body, image_data, image_mime) VALUES ($1, $2, $3, $4, $5)`,
-      [context.userId, title || null, body, imageBytes, imageMime],
+      `INSERT INTO memories (user_id, title, body, image_url, fb_storage_path, file_name, file_size)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [context.userId, title || null, body, imageUrl, fbStoragePath, fileName, fileSize],
     );
     return { ok: true };
   });
@@ -117,14 +131,17 @@ export const addComment = createServerFn({ method: "POST" })
 export const deleteMemory = createServerFn({ method: "POST" })
   .middleware([requireApproved])
   .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data, context }): Promise<{ ok: true }> => {
-    const owned = await query<{ user_id: string }>(`SELECT user_id FROM memories WHERE id = $1`, [data.id]);
+  .handler(async ({ data, context }): Promise<{ ok: true; fbStoragePath: string | null }> => {
+    const owned = await query<{ user_id: string; fb_storage_path: string | null }>(
+      `SELECT user_id, fb_storage_path FROM memories WHERE id = $1`,
+      [data.id],
+    );
     const row = owned.rows[0];
     if (!row) throw new Error("Memory not found");
     if (row.user_id !== context.userId && !context.isAdmin) throw new Error("Forbidden");
 
     await query(`DELETE FROM memories WHERE id = $1`, [data.id]);
-    return { ok: true };
+    return { ok: true, fbStoragePath: row.fb_storage_path };
   });
 
 export const deleteComment = createServerFn({ method: "POST" })

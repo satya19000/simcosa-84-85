@@ -112,6 +112,11 @@ CREATE TABLE IF NOT EXISTS events (
 );
 ALTER TABLE events ADD COLUMN IF NOT EXISTS cover_data bytea;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS cover_mime text;
+-- Firebase-Storage upload migration: covers now live in Firebase Storage,
+-- reusing existing cover_url; cover_data/cover_mime stay for old rows only.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS fb_storage_path text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS file_name text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS file_size bigint;
 
 CREATE TABLE IF NOT EXISTS event_rsvps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -136,6 +141,16 @@ CREATE TABLE IF NOT EXISTS gallery_items (
   uploaded_by varchar REFERENCES users(id),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- Firebase-Storage upload migration: new uploads store a Firebase Storage
+-- URL + object path + metadata instead of raw bytea. `storage_path` above is
+-- an existing caption/display fallback used in the UI — fb_storage_path is
+-- the new Firebase object path used for Storage deletes.
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS file_url text;
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS fb_storage_path text;
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS file_name text;
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS mime_type text;
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS file_size bigint;
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 
 -- =========================
 -- SUPPORT REQUESTS
@@ -208,6 +223,11 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS image_data bytea;
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS image_mime text;
+-- Firebase-Storage upload migration: new uploads reuse existing image_url
+-- (now a Firebase Storage download URL) and stop writing image_data.
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS fb_storage_path text;
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS file_name text;
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS file_size bigint;
 
 CREATE TABLE IF NOT EXISTS memory_likes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -246,6 +266,13 @@ CREATE TABLE IF NOT EXISTS blogs (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Firebase-Storage upload migration: blogs previously had no URL column
+-- (only image_data/image_mime bytea); new uploads store a Firebase Storage
+-- URL + object path + metadata instead.
+ALTER TABLE blogs ADD COLUMN IF NOT EXISTS image_url text;
+ALTER TABLE blogs ADD COLUMN IF NOT EXISTS fb_storage_path text;
+ALTER TABLE blogs ADD COLUMN IF NOT EXISTS file_name text;
+ALTER TABLE blogs ADD COLUMN IF NOT EXISTS file_size bigint;
 
 CREATE TABLE IF NOT EXISTS blog_likes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

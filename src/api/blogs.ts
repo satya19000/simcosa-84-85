@@ -34,7 +34,7 @@ export interface BlogRow {
 
 const LIST_COLUMNS = `
   b.id, b.author_id, b.title, b.content, b.excerpt, b.category,
-  CASE WHEN b.image_data IS NOT NULL THEN '/api/blogs/image/' || b.id ELSE NULL END AS image_url,
+  CASE WHEN b.image_data IS NOT NULL THEN '/api/blogs/image/' || b.id ELSE b.image_url END AS image_url,
   b.is_featured, b.is_published, b.created_at, b.updated_at,
   json_build_object('full_name', p.full_name) AS profiles,
   COALESCE((
@@ -90,35 +90,50 @@ export const getBlog = createServerFn({ method: "GET" })
     return row;
   });
 
+export interface CreateBlogInput {
+  title: string;
+  content: string;
+  excerpt?: string;
+  category: BlogCategory;
+  url?: string;
+  storagePath?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+}
+
 export const createBlog = createServerFn({ method: "POST" })
   .middleware([requireApproved])
-  .inputValidator((d: FormData) => d)
+  .inputValidator((d: CreateBlogInput) => d)
   .handler(async ({ data, context }): Promise<{ ok: true; id: string }> => {
-    const title = String(data.get("title") ?? "").trim();
-    const content = String(data.get("content") ?? "").trim();
-    const excerpt = String(data.get("excerpt") ?? "").trim();
-    const category = String(data.get("category") ?? "general") as BlogCategory;
+    const title = data.title.trim();
+    const content = data.content.trim();
+    const excerpt = (data.excerpt ?? "").trim();
+    const category = data.category;
     if (!title || !content) throw new Error("Title and content are required");
 
-    const file = data.get("image") as File | null;
-    let imageBytes: Buffer | null = null;
-    let imageMime: string | null = null;
-    if (file && typeof file !== "string" && file.size > 0) {
-      if (!ALLOWED_BLOG_IMAGE_TYPES.has(file.type)) {
+    let imageUrl: string | null = null;
+    let fbStoragePath: string | null = null;
+    let fileName: string | null = null;
+    let fileSize: number | null = null;
+    if (data.url) {
+      if (!data.mimeType || !ALLOWED_BLOG_IMAGE_TYPES.has(data.mimeType)) {
         throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
       }
-      if (file.size > MAX_BLOG_IMAGE_BYTES) {
-        throw new Error("File is too large. Maximum size is 15MB.");
+      if ((data.fileSize ?? 0) > MAX_BLOG_IMAGE_BYTES) {
+        throw new Error("This file is too large. Please upload a smaller image or compressed version.");
       }
-      imageBytes = Buffer.from(await file.arrayBuffer());
-      imageMime = file.type || "application/octet-stream";
+      imageUrl = data.url;
+      fbStoragePath = data.storagePath || null;
+      fileName = data.fileName || null;
+      fileSize = data.fileSize ?? null;
     }
 
     const autoExcerpt = excerpt || content.slice(0, 180);
     const res = await query<{ id: string }>(
-      `INSERT INTO blogs (author_id, title, content, excerpt, category, image_data, image_mime)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [context.userId, title, content, autoExcerpt, category, imageBytes, imageMime],
+      `INSERT INTO blogs (author_id, title, content, excerpt, category, image_url, fb_storage_path, file_name, file_size)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [context.userId, title, content, autoExcerpt, category, imageUrl, fbStoragePath, fileName, fileSize],
     );
     return { ok: true, id: res.rows[0].id };
   });
@@ -142,14 +157,17 @@ export const updateBlog = createServerFn({ method: "POST" })
 export const deleteBlog = createServerFn({ method: "POST" })
   .middleware([requireApproved])
   .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data, context }): Promise<{ ok: true }> => {
-    const owned = await query<{ author_id: string }>(`SELECT author_id FROM blogs WHERE id = $1`, [data.id]);
+  .handler(async ({ data, context }): Promise<{ ok: true; fbStoragePath: string | null }> => {
+    const owned = await query<{ author_id: string; fb_storage_path: string | null }>(
+      `SELECT author_id, fb_storage_path FROM blogs WHERE id = $1`,
+      [data.id],
+    );
     const row = owned.rows[0];
     if (!row) throw new Error("Blog not found");
     if (row.author_id !== context.userId && !context.isAdmin) throw new Error("Forbidden");
 
     await query(`DELETE FROM blogs WHERE id = $1`, [data.id]);
-    return { ok: true };
+    return { ok: true, fbStoragePath: row.fb_storage_path };
   });
 
 export const toggleBlogLike = createServerFn({ method: "POST" })
