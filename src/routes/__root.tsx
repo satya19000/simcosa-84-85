@@ -13,6 +13,7 @@ import { AuthProvider } from "@/lib/auth";
 import { SiteHeader, SiteFooter } from "@/components/SiteHeader";
 import { Toaster } from "@/components/ui/sonner";
 import { WelcomeToast } from "@/components/WelcomeToast";
+import { PresencePinger } from "@/components/OnlineMembers";
 
 function NotFoundComponent() {
   return (
@@ -91,6 +92,7 @@ function RootComponent() {
         </div>
         <Toaster richColors position="top-center" />
         <WelcomeToast />
+        <PresencePinger />
       </AuthProvider>
     </QueryClientProvider>
   );

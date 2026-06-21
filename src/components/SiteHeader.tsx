@@ -3,6 +3,7 @@ import { Menu, X, Users, Camera, Calendar, MessageCircle, BookOpen, Heart, HelpC
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { OnlineCountBadge } from "@/components/OnlineMembers";
 
 const publicLinks = [
   { to: "/about", label: "About" },
@@ -75,6 +76,7 @@ export function SiteHeader() {
 
           {/* Auth button */}
           <div className="hidden lg:flex items-center gap-2 shrink-0">
+            <OnlineCountBadge />
             {user ? (
               <button
                 onClick={onSignOut}

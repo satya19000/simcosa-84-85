@@ -31,6 +31,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_session_expire ON sessions (expire);
 
 -- =========================
+-- PRESENCE (online members)
+-- =========================
+CREATE TABLE IF NOT EXISTS member_presence (
+  user_id varchar PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
+  current_page text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- =========================
 -- ROLES
 -- =========================
 DO $$ BEGIN
