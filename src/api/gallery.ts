@@ -26,6 +26,9 @@ export interface GalleryRow {
   id: string;
   title: string | null;
   caption: string | null;
+  location: string | null;
+  taken_date: string | null;
+  people: string | null;
   media_type: string;
   storage_path: string;
   file_url: string | null;
@@ -39,7 +42,7 @@ export const listGallery = createServerFn({ method: "GET" })
   .middleware([requireApproved])
   .handler(async (): Promise<GalleryRow[]> => {
     const res = await query<GalleryRow>(
-      `SELECT g.id, g.title, g.caption, g.media_type, g.storage_path,
+      `SELECT g.id, g.title, g.caption, g.location, g.taken_date, g.people, g.media_type, g.storage_path,
          COALESCE(g.file_url, CASE WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id ELSE NULL END) AS file_url,
          g.uploaded_by, g.created_at,
          COALESCE((
@@ -68,13 +71,27 @@ export interface UploadGalleryItemInput {
   mimeType: string;
   fileSize: number;
   caption?: string;
+  title?: string;
+  location?: string;
+  takenDate?: string;
+  people?: string;
+}
+
+/** Returns a safe `YYYY-MM-DD` string for an optional date input, or null. Throws on an invalid (but non-empty) date. */
+function parseOptionalDate(value: string | undefined): string | null {
+  if (!value || !value.trim()) return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed) || Number.isNaN(Date.parse(trimmed))) {
+    throw new Error("Invalid date format. Please use YYYY-MM-DD.");
+  }
+  return trimmed;
 }
 
 export const uploadGalleryItem = createServerFn({ method: "POST" })
   .middleware([requireApproved])
   .inputValidator((d: UploadGalleryItemInput) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
-    const { url, storagePath, fileName, mimeType, fileSize, caption } = data;
+    const { url, storagePath, fileName, mimeType, fileSize, caption, title, location, takenDate, people } = data;
     if (!url || !storagePath || !fileName) {
       throw new Error("No file provided");
     }
@@ -92,13 +109,18 @@ export const uploadGalleryItem = createServerFn({ method: "POST" })
     if (fileSize > MAX_UPLOAD_BYTES) {
       throw new Error("This file is too large. Please upload a smaller image or compressed version.");
     }
+    const safeTakenDate = parseOptionalDate(takenDate);
     await query(
       `INSERT INTO gallery_items
-         (storage_path, caption, media_type, mime, file_url, fb_storage_path, file_name, mime_type, file_size, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         (storage_path, caption, title, location, taken_date, people, media_type, mime, file_url, fb_storage_path, file_name, mime_type, file_size, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         fileName,
         caption || null,
+        title || null,
+        location || null,
+        safeTakenDate,
+        people || null,
         mediaType,
         mimeType || "application/octet-stream",
         url,
@@ -108,6 +130,37 @@ export const uploadGalleryItem = createServerFn({ method: "POST" })
         fileSize,
         context.userId,
       ],
+    );
+    return { ok: true };
+  });
+
+export interface EditGalleryItemInput {
+  id: string;
+  title?: string;
+  caption?: string;
+  location?: string;
+  takenDate?: string;
+  people?: string;
+}
+
+export const editGalleryItem = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: EditGalleryItemInput) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const owned = await query<{ uploaded_by: string | null }>(
+      `SELECT uploaded_by FROM gallery_items WHERE id = $1 AND deleted_at IS NULL`,
+      [data.id],
+    );
+    const row = owned.rows[0];
+    if (!row) throw new Error("Item not found");
+    if (row.uploaded_by !== context.userId && !context.isAdmin) throw new Error("Forbidden");
+
+    const safeTakenDate = parseOptionalDate(data.takenDate);
+    await query(
+      `UPDATE gallery_items
+       SET title = $2, caption = $3, location = $4, taken_date = $5, people = $6
+       WHERE id = $1`,
+      [data.id, data.title || null, data.caption || null, data.location || null, safeTakenDate, data.people || null],
     );
     return { ok: true };
   });

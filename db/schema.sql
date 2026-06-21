@@ -161,6 +161,10 @@ ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS file_name text;
 ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS mime_type text;
 ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS file_size bigint;
 ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+-- Optional per-photo memory details (location, date, people, description)
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS location text;
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS taken_date date;
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS people text;
 
 CREATE TABLE IF NOT EXISTS gallery_likes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
