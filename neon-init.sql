@@ -147,6 +147,23 @@ ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS mime_type text;
 ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS file_size bigint;
 ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 
+CREATE TABLE IF NOT EXISTS gallery_likes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  gallery_item_id uuid REFERENCES gallery_items(id) ON DELETE CASCADE NOT NULL,
+  user_id varchar REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(gallery_item_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS gallery_comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  gallery_item_id uuid REFERENCES gallery_items(id) ON DELETE CASCADE NOT NULL,
+  user_id varchar REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  comment text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
 -- =========================
 -- SUPPORT REQUESTS
 -- =========================

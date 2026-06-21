@@ -14,6 +14,14 @@ const ALLOWED_DOC_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ]);
 
+export interface GalleryComment {
+  id: string;
+  comment: string;
+  user_id: string;
+  created_at: string;
+  profiles: { full_name: string } | null;
+}
+
 export interface GalleryRow {
   id: string;
   title: string | null;
@@ -23,16 +31,32 @@ export interface GalleryRow {
   file_url: string | null;
   uploaded_by: string | null;
   created_at: string;
+  gallery_likes: { user_id: string }[];
+  gallery_comments: GalleryComment[];
 }
 
 export const listGallery = createServerFn({ method: "GET" })
   .middleware([requireApproved])
   .handler(async (): Promise<GalleryRow[]> => {
     const res = await query<GalleryRow>(
-      `SELECT id, title, caption, media_type, storage_path,
-         COALESCE(file_url, CASE WHEN data IS NOT NULL THEN '/api/gallery/'||id ELSE NULL END) AS file_url,
-         uploaded_by, created_at
-       FROM gallery_items WHERE deleted_at IS NULL ORDER BY created_at DESC`,
+      `SELECT g.id, g.title, g.caption, g.media_type, g.storage_path,
+         COALESCE(g.file_url, CASE WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id ELSE NULL END) AS file_url,
+         g.uploaded_by, g.created_at,
+         COALESCE((
+           SELECT json_agg(json_build_object('user_id', gl.user_id))
+           FROM gallery_likes gl WHERE gl.gallery_item_id = g.id
+         ), '[]'::json) AS gallery_likes,
+         COALESCE((
+           SELECT json_agg(json_build_object(
+             'id', gc.id, 'comment', gc.comment, 'user_id', gc.user_id,
+             'created_at', gc.created_at,
+             'profiles', json_build_object('full_name', cp.full_name)
+           ) ORDER BY gc.created_at ASC)
+           FROM gallery_comments gc
+           LEFT JOIN profiles cp ON cp.id = gc.user_id
+           WHERE gc.gallery_item_id = g.id AND gc.deleted_at IS NULL
+         ), '[]'::json) AS gallery_comments
+       FROM gallery_items g WHERE g.deleted_at IS NULL ORDER BY g.created_at DESC`,
     );
     return res.rows;
   });
@@ -102,4 +126,52 @@ export const deleteGalleryItem = createServerFn({ method: "POST" })
 
     await query(`DELETE FROM gallery_items WHERE id = $1`, [data.id]);
     return { ok: true, fbStoragePath: row.fb_storage_path };
+  });
+
+export const toggleGalleryLike = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: { galleryItemId: string; liked: boolean }) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    if (data.liked) {
+      await query(
+        `DELETE FROM gallery_likes WHERE gallery_item_id = $1 AND user_id = $2`,
+        [data.galleryItemId, context.userId],
+      );
+    } else {
+      await query(
+        `INSERT INTO gallery_likes (gallery_item_id, user_id) VALUES ($1, $2)
+         ON CONFLICT (gallery_item_id, user_id) DO NOTHING`,
+        [data.galleryItemId, context.userId],
+      );
+    }
+    return { ok: true };
+  });
+
+export const addGalleryComment = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: { galleryItemId: string; comment: string }) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const comment = data.comment.trim();
+    if (!comment) throw new Error("Comment is required");
+    await query(
+      `INSERT INTO gallery_comments (gallery_item_id, user_id, comment) VALUES ($1, $2, $3)`,
+      [data.galleryItemId, context.userId, comment],
+    );
+    return { ok: true };
+  });
+
+export const deleteGalleryComment = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const owned = await query<{ user_id: string }>(
+      `SELECT user_id FROM gallery_comments WHERE id = $1 AND deleted_at IS NULL`,
+      [data.id],
+    );
+    const row = owned.rows[0];
+    if (!row) throw new Error("Comment not found");
+    if (row.user_id !== context.userId && !context.isAdmin) throw new Error("Forbidden");
+
+    await query(`UPDATE gallery_comments SET deleted_at = now() WHERE id = $1`, [data.id]);
+    return { ok: true };
   });

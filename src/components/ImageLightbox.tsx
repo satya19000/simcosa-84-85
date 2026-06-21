@@ -13,6 +13,8 @@ interface ImageLightboxProps {
   index: number | null;
   onClose: () => void;
   onIndexChange: (index: number) => void;
+  /** Optional extra content (e.g. like/comment bar) rendered below the image. */
+  renderFooter?: (index: number) => React.ReactNode;
 }
 
 /**
@@ -22,7 +24,7 @@ interface ImageLightboxProps {
  * - Mobile: tap to enlarge, swipe left/right to navigate, tap image to zoom,
  *   native pinch-zoom enabled, tap outside to close
  */
-export function ImageLightbox({ images, index, onClose, onIndexChange }: ImageLightboxProps) {
+export function ImageLightbox({ images, index, onClose, onIndexChange, renderFooter }: ImageLightboxProps) {
   const isOpen = index !== null && index >= 0 && index < images.length;
   const [zoomed, setZoomed] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -146,6 +148,11 @@ export function ImageLightbox({ images, index, onClose, onIndexChange }: ImageLi
           <p className="mt-1 text-xs font-semibold text-amber-300/80">
             {index + 1} / {images.length}
           </p>
+        )}
+        {renderFooter && (
+          <div className="mt-3 w-full max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
+            {renderFooter(index)}
+          </div>
         )}
       </div>
     </div>
