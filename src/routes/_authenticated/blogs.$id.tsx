@@ -12,6 +12,7 @@ import { ArrowLeft, Heart, MessageCircle, Send, Star, EyeOff, Eye, Trash2, Penci
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { CATEGORIES, SAMPLE_BLOGS } from "./blogs";
+import { Linkify } from "@/lib/linkify";
 
 export const Route = createFileRoute("/_authenticated/blogs/$id")({
   head: () => ({ meta: [{ title: "Blog — SIMCOSA 84–85" }] }),
@@ -49,7 +50,7 @@ function BlogDetail() {
           </span>
           <h1>{sample.title}</h1>
           <p className="text-gray-500 mt-2">{sample.author} · {format(new Date(sample.created_at), "PPP")}</p>
-          <p className="text-gray-700 leading-relaxed whitespace-pre-line mt-6 text-lg">{sample.content}</p>
+          <p className="text-gray-700 leading-relaxed mt-6 text-lg"><Linkify text={sample.content} /></p>
         </div>
       </div>
     );
@@ -208,7 +209,7 @@ function BlogDetail() {
             </div>
           </form>
         ) : (
-          <p className="text-gray-700 leading-relaxed whitespace-pre-line mt-6 text-lg">{blog.content}</p>
+          <p className="text-gray-700 leading-relaxed mt-6 text-lg"><Linkify text={blog.content} /></p>
         )}
 
         {/* Owner / admin actions */}

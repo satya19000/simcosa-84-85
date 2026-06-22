@@ -12,6 +12,7 @@ import { PenLine, Star, ArrowRight, BookOpen } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
+import { Linkify } from "@/lib/linkify";
 import { uploadToFirebaseStorageResumable } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
 import { useUploadQueue } from "@/hooks/useUploadQueue";
@@ -262,7 +263,7 @@ function Blogs() {
                       </span>
                       <h3 className="font-display text-xl font-bold text-gray-900 mb-2">{b.title}</h3>
                       <p className="text-gray-500 text-sm mb-1">{b.author} · {format(new Date(b.created_at), "PPP")}</p>
-                      <p className="text-gray-600 leading-relaxed mt-2 flex-1">{b.excerpt}</p>
+                      <p className="text-gray-600 leading-relaxed mt-2 flex-1"><Linkify text={b.excerpt} /></p>
                       <Link to="/blogs/$id" params={{ id: b.id }} className="mt-4 inline-flex items-center gap-2 text-amber-600 font-bold text-sm hover:gap-3 transition-all">
                         Read More <ArrowRight className="h-4 w-4" />
                       </Link>
@@ -298,7 +299,7 @@ function Blogs() {
                   <p className="text-gray-500 text-sm mb-1">
                     {b.profiles?.full_name ?? "A Batchmate"} · {format(new Date(b.created_at), "PPP")}
                   </p>
-                  <p className="text-gray-600 leading-relaxed mt-2 flex-1">{b.excerpt}</p>
+                  <p className="text-gray-600 leading-relaxed mt-2 flex-1">{b.excerpt && <Linkify text={b.excerpt} />}</p>
                   <Link to="/blogs/$id" params={{ id: b.id }} className="mt-4 inline-flex items-center gap-2 text-amber-600 font-bold text-sm hover:gap-3 transition-all">
                     Read More <ArrowRight className="h-4 w-4" />
                   </Link>

@@ -6,6 +6,7 @@ import {
   uploadGalleryItem,
   editGalleryItem,
   deleteGalleryItem,
+  replaceGalleryItemFile,
   toggleGalleryLike,
   addGalleryComment,
   deleteGalleryComment,
@@ -16,7 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, Film, Image, FileText, Trash2, Heart, MessageCircle, Send, Pencil, MapPin, Calendar, Users } from "lucide-react";
+import { Upload, Film, Image, FileText, Trash2, Heart, MessageCircle, Send, Pencil, MapPin, Calendar, Users, ImageOff, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
@@ -148,7 +149,7 @@ function Gallery() {
   };
 
   const uploadedImages: LightboxImage[] = images.map(it => ({
-    src: it.file_url ?? `/api/gallery/${it.id}`,
+    src: it.file_available && it.file_url ? it.file_url : "",
     alt: it.caption ?? "Photo",
     caption: it.caption ?? undefined,
   }));
@@ -344,15 +345,22 @@ function Gallery() {
                   <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
                     <FileText className="h-6 w-6 text-amber-500" />
                   </div>
-                  <a
-                    href={it.file_url ?? `/api/gallery/${it.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex-1 min-w-0"
-                  >
-                    <p className="font-semibold text-gray-700 truncate">{it.caption || it.storage_path}</p>
-                    <p className="text-xs text-gray-400 truncate">{it.storage_path}</p>
-                  </a>
+                  {it.file_available && it.file_url ? (
+                    <a
+                      href={it.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 min-w-0"
+                    >
+                      <p className="font-semibold text-gray-700 truncate">{it.caption || it.storage_path}</p>
+                      <p className="text-xs text-gray-400 truncate">{it.storage_path}</p>
+                    </a>
+                  ) : (
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-700 truncate">{it.caption || it.storage_path}</p>
+                      <p className="text-xs text-red-400 truncate">Old file missing. Please re-upload.</p>
+                    </div>
+                  )}
                   {(isAdmin || it.uploaded_by === user?.id) && (
                     <button
                       type="button"
@@ -615,9 +623,34 @@ function GalleryItem({
   onDelete?: () => void;
   onToggleLike: (id: string, liked: boolean) => void;
 }) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
   const [showComments, setShowComments] = useState(false);
-  const url = item.file_url ?? `/api/gallery/${item.id}`;
+  const [replacing, setReplacing] = useState(false);
   const isVideo = item.media_type === "video";
+  const fileAvailable = item.file_available && !!item.file_url;
+  const canReplace = canDelete;
+
+  const onReplaceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user) return;
+    setReplacing(true);
+    try {
+      const compressed = file.type.startsWith("image/") ? await compressImage(file) : file;
+      const { url, path } = await uploadToFirebaseStorageResumable(compressed, "gallery", user.id);
+      await replaceGalleryItemFile({
+        data: { id: item.id, url, storagePath: path, fileName: compressed.name, mimeType: compressed.type, fileSize: compressed.size },
+      });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+      toast.success("File replaced");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Replace failed");
+    } finally {
+      setReplacing(false);
+    }
+  };
+
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-sm border border-amber-100 hover:shadow-md transition-shadow group">
       {canDelete && (
@@ -631,8 +664,20 @@ function GalleryItem({
         </button>
       )}
       <div className={`${isVideo ? "aspect-video" : "aspect-square"} bg-amber-50 flex items-center justify-center`}>
-        {isVideo
-          ? <video src={url} controls className="w-full h-full object-cover" />
+        {!fileAvailable ? (
+          <div className="flex flex-col items-center justify-center gap-2 text-center px-3 text-gray-400">
+            <ImageOff className="h-8 w-8" />
+            <p className="text-xs font-medium">Old photo file missing. Please re-upload this image.</p>
+            {canReplace && (
+              <label className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-700 cursor-pointer">
+                <RefreshCw className={`h-3.5 w-3.5 ${replacing ? "animate-spin" : ""}`} />
+                {replacing ? "Uploading…" : "Replace file"}
+                <input type="file" accept="image/*,video/*" className="hidden" disabled={replacing} onChange={onReplaceFile} />
+              </label>
+            )}
+          </div>
+        ) : isVideo
+          ? <video src={item.file_url!} controls className="w-full h-full object-cover" />
           : (
             <button
               type="button"
@@ -640,7 +685,7 @@ function GalleryItem({
               aria-label={`Enlarge ${item.caption ?? "photo"}`}
               className="block w-full h-full cursor-zoom-in"
             >
-              <img src={url} alt={item.caption ?? "Photo"} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+              <img src={item.file_url!} alt={item.caption ?? "Photo"} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
             </button>
           )
         }
