@@ -12,8 +12,9 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
-import { uploadToFirebaseStorage, deleteFromFirebaseStorage } from "@/lib/storage";
+import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
+import { useUploadQueue } from "@/hooks/useUploadQueue";
 
 const ALLOWED_MEMORY_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 const MAX_MEMORY_UPLOAD_MB = 15;
@@ -35,6 +36,7 @@ function Memories() {
   const [posting, setPosting] = useState(false);
   const [lbIndex, setLbIndex] = useState<number | null>(null);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const uploadQueue = useUploadQueue();
 
   const { data: memories } = useQuery({
     queryKey: ["memories"],
@@ -69,11 +71,17 @@ function Memories() {
     }
 
     setPosting(true);
+    const original = file;
+    if (original) uploadQueue.init([original]);
     try {
       let uploaded: { url: string; path: string } | null = null;
       if (file) {
+        uploadQueue.setStatus(original!, "uploading", 0);
         file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorage(file, "memories", user.id);
+        uploaded = await uploadToFirebaseStorageResumable(file, "memories", user.id, (pct) =>
+          uploadQueue.setPct(original!, pct),
+        );
+        uploadQueue.setStatus(original!, "completed", 100);
       }
       await postMemory({
         data: {
@@ -88,10 +96,12 @@ function Memories() {
       });
       form.reset();
       setPhotoFiles([]);
-      toast.success("Your memory has been shared! 💛");
+      uploadQueue.reset();
+      toast.success("Upload completed successfully. Your memory has been shared! 💛");
       qc.invalidateQueries({ queryKey: ["memories"] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to post");
+      if (original) uploadQueue.setStatus(original, "error");
+      toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setPosting(false);
     }
@@ -160,10 +170,12 @@ function Memories() {
                 multiple={false}
                 disabled={posting}
                 className="mt-1"
+                progress={uploadQueue.progress}
               />
             </div>
           </div>
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex items-center justify-end gap-4">
+            {posting && photoFiles.length > 0 && <span className="text-sm text-amber-700 font-semibold">Uploading… please wait</span>}
             <Button type="submit" disabled={posting} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl">
               <Send className="h-4 w-4 mr-2" /> {posting ? "Posting…" : "Share Memory"}
             </Button>

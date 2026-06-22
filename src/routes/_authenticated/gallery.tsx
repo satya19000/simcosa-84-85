@@ -20,8 +20,9 @@ import { Upload, Film, Image, FileText, Trash2, Heart, MessageCircle, Send, Penc
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
-import { uploadToFirebaseStorage, deleteFromFirebaseStorage } from "@/lib/storage";
+import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
+import { useUploadQueue } from "@/hooks/useUploadQueue";
 
 export const Route = createFileRoute("/_authenticated/gallery")({
   head: () => ({ meta: [{ title: "Photo & Video Gallery — SIMCOSA 84–85" }] }),
@@ -50,7 +51,7 @@ function Gallery() {
   const [takenDate, setTakenDate] = useState("");
   const [people, setPeople] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const uploadQueue = useUploadQueue();
   const [activeFilter, setActiveFilter] = useState("All");
   const [showUpload, setShowUpload] = useState(false);
   const [lb, setLb] = useState<{ images: LightboxImage[]; index: number } | null>(null);
@@ -74,14 +75,19 @@ function Gallery() {
       }
     }
     setUploading(true);
-    setUploadProgress({ done: 0, total: files.length });
-    try {
-      for (let i = 0; i < files.length; i++) {
-        let file = files[i];
+    uploadQueue.init(files);
+    let succeeded = 0;
+    let failed = 0;
+    for (const original of files) {
+      let file = original;
+      uploadQueue.setStatus(original, "uploading", 0);
+      try {
         if (file.type.startsWith("image/")) {
           file = await compressImage(file);
         }
-        const { url, path } = await uploadToFirebaseStorage(file, "gallery", user.id);
+        const { url, path } = await uploadToFirebaseStorageResumable(file, "gallery", user.id, (pct) =>
+          uploadQueue.setPct(original, pct),
+        );
         await uploadGalleryItem({
           data: {
             url,
@@ -96,9 +102,16 @@ function Gallery() {
             people: people || undefined,
           },
         });
-        setUploadProgress({ done: i + 1, total: files.length });
+        uploadQueue.setStatus(original, "completed", 100);
+        succeeded++;
+      } catch (err) {
+        uploadQueue.setStatus(original, "error");
+        failed++;
+        console.error("[gallery] upload failed:", err);
       }
-      toast.success(`Uploaded ${files.length} item(s) successfully!`);
+    }
+    if (failed === 0) {
+      toast.success("Upload completed successfully.");
       setFiles([]);
       setCaption("");
       setTitle("");
@@ -106,13 +119,12 @@ function Gallery() {
       setTakenDate("");
       setPeople("");
       setShowUpload(false);
-      qc.invalidateQueries({ queryKey: ["gallery"] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-      setUploadProgress(null);
+      uploadQueue.reset();
+    } else {
+      toast.error(`Upload failed. Please try again. (Uploaded: ${succeeded}, Failed: ${failed})`);
     }
+    qc.invalidateQueries({ queryKey: ["gallery"] });
+    setUploading(false);
   };
 
   const images = items?.filter(i => i.media_type === "image") ?? [];
@@ -184,7 +196,11 @@ function Gallery() {
                   accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
                   disabled={uploading}
                   className="mt-1"
+                  progress={uploadQueue.progress}
                 />
+                {files.some((f) => f.type.startsWith("video/")) && (
+                  <p className="text-xs text-amber-600 mt-1.5 font-medium">Videos may take longer depending on file size and internet speed.</p>
+                )}
               </div>
               <p className="text-xs text-gray-500 -mt-1">Optional details below are applied to all selected files. You can edit each photo's details later.</p>
               <div className="grid sm:grid-cols-2 gap-4">
@@ -209,13 +225,13 @@ function Gallery() {
                   <Input id="people" name="people" value={people} onChange={(e) => setPeople(e.target.value)} placeholder="e.g. Dr. Satya, Dr. Vijaya Gopal" className="h-12 mt-1 border-amber-200" />
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <Button type="submit" disabled={uploading || files.length === 0} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl shrink-0">
                   {uploading ? "Uploading…" : `Upload ${files.length > 0 ? files.length + " item(s)" : ""}`}
                 </Button>
-                {uploadProgress && (
-                  <span className="text-sm text-gray-500 font-medium">
-                    Uploading {uploadProgress.done}/{uploadProgress.total}…
+                {uploading && (
+                  <span className="text-sm text-amber-700 font-semibold">
+                    Uploading {Math.min(uploadQueue.completedCount + uploadQueue.failedCount + 1, uploadQueue.total)} of {uploadQueue.total} files… please wait
                   </span>
                 )}
               </div>
