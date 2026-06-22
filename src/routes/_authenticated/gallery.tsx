@@ -263,6 +263,13 @@ function Gallery() {
           ))}
         </div>
 
+        {/* Loading state — don't silently render a blank page while fetching */}
+        {isLoading && (
+          <div className="rounded-2xl border border-amber-100 bg-white p-6 text-center text-gray-500 font-semibold mb-8">
+            Loading gallery…
+          </div>
+        )}
+
         {/* Error state — don't silently render a blank page if the query fails */}
         {isError && (
           <div className="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-red-600 font-semibold mb-8">
