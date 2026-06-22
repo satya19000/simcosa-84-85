@@ -14,7 +14,7 @@ import {
   adminListGallery, adminDeleteGalleryItem,
   adminListMemories, adminDeleteMemory,
 } from "@/api/admin";
-import { uploadGalleryItem } from "@/api/gallery";
+import { uploadGalleryItem, replaceGalleryItemFile } from "@/api/gallery";
 import { postMemory } from "@/api/memories";
 import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
@@ -536,6 +536,26 @@ function GalleryTab() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const uploadQueue = useUploadQueue();
+  const [replacingId, setReplacingId] = useState<string | null>(null);
+
+  const replaceFile = async (id: string, file: File) => {
+    if (!user) return;
+    setReplacingId(id);
+    try {
+      const compressed = file.type.startsWith("image/") ? await compressImage(file) : file;
+      const { url, path } = await uploadToFirebaseStorageResumable(compressed, "gallery", user.id);
+      await replaceGalleryItemFile({
+        data: { id, url, storagePath: path, fileName: compressed.name, mimeType: compressed.type, fileSize: compressed.size },
+      });
+      toast.success("File replaced");
+      qc.invalidateQueries({ queryKey: ["admin-gallery"] });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Replace failed");
+    } finally {
+      setReplacingId(null);
+    }
+  };
 
   const del = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
@@ -631,17 +651,38 @@ function GalleryTab() {
       {data?.map((g) => (
         <div key={g.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
           <div className="flex items-center gap-3">
-            {g.media_type === "image" ? (
-              <img src={g.file_url ?? `/api/gallery/${g.id}`} alt={g.caption ?? g.title ?? "Photo"} className="h-14 w-14 rounded-lg object-cover shrink-0" loading="lazy" />
-            ) : (
+            {g.file_available && g.media_type === "image" ? (
+              <img src={g.file_url!} alt={g.caption ?? g.title ?? "Photo"} className="h-14 w-14 rounded-lg object-cover shrink-0" loading="lazy" />
+            ) : g.file_available ? (
               <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground shrink-0">Video</div>
+            ) : (
+              <div className="h-14 w-14 rounded-lg bg-destructive/10 flex items-center justify-center text-[10px] text-destructive text-center px-1 shrink-0">File missing</div>
             )}
             <div>
               <p className="font-semibold">{g.title || g.caption || g.storage_path} <span className="text-xs text-muted-foreground ml-1 capitalize">[{g.media_type}]</span></p>
               <p className="text-sm text-muted-foreground">By {g.profiles?.full_name ?? "Unknown"} · {format(new Date(g.created_at), "PPP")}</p>
+              {!g.file_available && (
+                <p className="text-xs text-destructive font-medium mt-0.5">Old photo file missing. Please re-upload this image.</p>
+              )}
             </div>
           </div>
-          <Button onClick={() => del(g.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
+          <div className="flex items-center gap-2">
+            <label className="inline-flex items-center h-10 px-3 rounded-md border border-border text-sm font-medium cursor-pointer hover:bg-accent">
+              {replacingId === g.id ? "Uploading…" : "Replace file"}
+              <input
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                disabled={replacingId === g.id}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) replaceFile(g.id, file);
+                }}
+              />
+            </label>
+            <Button onClick={() => del(g.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
+          </div>
         </div>
       ))}
     </div>

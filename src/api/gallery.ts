@@ -32,18 +32,32 @@ export interface GalleryRow {
   media_type: string;
   storage_path: string;
   file_url: string | null;
+  file_available: boolean;
   uploaded_by: string | null;
   created_at: string;
   gallery_likes: { user_id: string }[];
   gallery_comments: GalleryComment[];
 }
 
+// Resolves a display URL for old (pre-Firebase) rows: file_url, then a
+// storage_path that's already a full URL, then the legacy bytea-serve
+// route — in that order. `file_available` is false only when none of those
+// resolve, so old rows are never hidden, just shown with a placeholder.
+const FILE_URL_SQL = `
+  CASE
+    WHEN g.file_url IS NOT NULL THEN g.file_url
+    WHEN g.storage_path ~* '^https?://' THEN g.storage_path
+    WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id
+    ELSE NULL
+  END`;
+
 export const listGallery = createServerFn({ method: "GET" })
   .middleware([requireApproved])
   .handler(async (): Promise<GalleryRow[]> => {
     const res = await query<GalleryRow>(
       `SELECT g.id, g.title, g.caption, g.location, g.taken_date, g.people, g.media_type, g.storage_path,
-         COALESCE(g.file_url, CASE WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id ELSE NULL END) AS file_url,
+         ${FILE_URL_SQL} AS file_url,
+         (${FILE_URL_SQL}) IS NOT NULL AS file_available,
          g.uploaded_by, g.created_at,
          COALESCE((
            SELECT json_agg(json_build_object('user_id', gl.user_id))
@@ -163,6 +177,57 @@ export const editGalleryItem = createServerFn({ method: "POST" })
       [data.id, data.title || null, data.caption || null, data.location || null, safeTakenDate, data.people || null],
     );
     return { ok: true };
+  });
+
+export interface ReplaceGalleryFileInput {
+  id: string;
+  url: string;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+}
+
+/** Re-uploads the underlying file for an existing gallery row (e.g. one whose legacy file is missing), keeping its details/likes/comments intact. */
+export const replaceGalleryItemFile = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: ReplaceGalleryFileInput) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true; oldFbStoragePath: string | null }> => {
+    const { id, url, storagePath, fileName, mimeType, fileSize } = data;
+    if (!url || !storagePath || !fileName) {
+      throw new Error("No file provided");
+    }
+    const owned = await query<{ uploaded_by: string | null; fb_storage_path: string | null }>(
+      `SELECT uploaded_by, fb_storage_path FROM gallery_items WHERE id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
+    const row = owned.rows[0];
+    if (!row) throw new Error("Item not found");
+    if (row.uploaded_by !== context.userId && !context.isAdmin) throw new Error("Forbidden");
+
+    const mediaType = mimeType.startsWith("video")
+      ? "video"
+      : mimeType.startsWith("image")
+        ? "image"
+        : "document";
+    if (mediaType === "image" && !ALLOWED_IMAGE_TYPES.has(mimeType)) {
+      throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+    }
+    if (mediaType === "document" && !ALLOWED_DOC_TYPES.has(mimeType)) {
+      throw new Error("Unsupported file type. Allowed: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX.");
+    }
+    if (fileSize > MAX_UPLOAD_BYTES) {
+      throw new Error("This file is too large. Please upload a smaller image or compressed version.");
+    }
+
+    await query(
+      `UPDATE gallery_items
+       SET storage_path = $2, media_type = $3, mime = $4, file_url = $5, fb_storage_path = $6,
+           file_name = $7, mime_type = $8, file_size = $9, data = NULL
+       WHERE id = $1`,
+      [id, fileName, mediaType, mimeType || "application/octet-stream", url, storagePath, fileName, mimeType || "application/octet-stream", fileSize],
+    );
+    return { ok: true, oldFbStoragePath: row.fb_storage_path };
   });
 
 export const deleteGalleryItem = createServerFn({ method: "POST" })

@@ -520,17 +520,29 @@ export interface AdminGalleryRow {
   media_type: string;
   storage_path: string;
   file_url: string | null;
+  file_available: boolean;
   created_at: string;
   uploaded_by: string | null;
   profiles: { full_name: string | null } | null;
 }
+
+// Same fallback order as listGallery in api/gallery.ts: file_url, then a
+// storage_path that's already a full URL, then the legacy bytea route.
+const ADMIN_FILE_URL_SQL = `
+  CASE
+    WHEN g.file_url IS NOT NULL THEN g.file_url
+    WHEN g.storage_path ~* '^https?://' THEN g.storage_path
+    WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id
+    ELSE NULL
+  END`;
 
 export const adminListGallery = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .handler(async (): Promise<AdminGalleryRow[]> => {
     const res = await query<AdminGalleryRow>(
       `SELECT g.id, g.title, g.caption, g.media_type, g.storage_path,
-         COALESCE(g.file_url, CASE WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id ELSE NULL END) AS file_url,
+         ${ADMIN_FILE_URL_SQL} AS file_url,
+         (${ADMIN_FILE_URL_SQL}) IS NOT NULL AS file_available,
          g.created_at, g.uploaded_by,
          json_build_object('full_name', p.full_name) AS profiles
        FROM gallery_items g
