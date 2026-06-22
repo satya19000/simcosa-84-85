@@ -527,12 +527,12 @@ export interface AdminGalleryRow {
 }
 
 // Same fallback order as listGallery in api/gallery.ts: file_url, then a
-// storage_path that's already a full URL, then the legacy bytea route.
+// storage_path that's already a full URL. No legacy bytea route — the
+// live gallery_items table has no `data` column.
 const ADMIN_FILE_URL_SQL = `
   CASE
     WHEN g.file_url IS NOT NULL THEN g.file_url
     WHEN g.storage_path ~* '^https?://' THEN g.storage_path
-    WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id
     ELSE NULL
   END`;
 

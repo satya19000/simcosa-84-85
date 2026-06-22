@@ -39,15 +39,15 @@ export interface GalleryRow {
   gallery_comments: GalleryComment[];
 }
 
-// Resolves a display URL for old (pre-Firebase) rows: file_url, then a
-// storage_path that's already a full URL, then the legacy bytea-serve
-// route — in that order. `file_available` is false only when none of those
-// resolve, so old rows are never hidden, just shown with a placeholder.
+// Resolves a display URL for a row: file_url, then a storage_path that's
+// already a full URL — in that order. The live gallery_items table has no
+// `data` bytea column, so there is no legacy bytea-serve fallback here.
+// `file_available` is false when neither resolves, so rows are never
+// hidden, just shown with a placeholder.
 const FILE_URL_SQL = `
   CASE
     WHEN g.file_url IS NOT NULL THEN g.file_url
     WHEN g.storage_path ~* '^https?://' THEN g.storage_path
-    WHEN g.data IS NOT NULL THEN '/api/gallery/'||g.id
     ELSE NULL
   END`;
 
