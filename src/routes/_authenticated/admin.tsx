@@ -16,8 +16,9 @@ import {
 } from "@/api/admin";
 import { uploadGalleryItem } from "@/api/gallery";
 import { postMemory } from "@/api/memories";
-import { uploadToFirebaseStorage, deleteFromFirebaseStorage } from "@/lib/storage";
+import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
+import { useUploadQueue } from "@/hooks/useUploadQueue";
 import type { ApprovalStatus } from "@/backend/auth/service";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -534,6 +535,7 @@ function GalleryTab() {
   const { data } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => adminListGallery() });
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const uploadQueue = useUploadQueue();
 
   const del = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
@@ -561,25 +563,40 @@ function GalleryTab() {
       }
     }
     setUploading(true);
-    try {
-      for (let file of files) {
+    uploadQueue.init(files);
+    let succeeded = 0;
+    let failed = 0;
+    for (const original of files) {
+      let file = original;
+      uploadQueue.setStatus(original, "uploading", 0);
+      try {
         if (file.type.startsWith("image/")) {
           file = await compressImage(file);
         }
-        const { url, path } = await uploadToFirebaseStorage(file, "gallery", user.id);
+        const { url, path } = await uploadToFirebaseStorageResumable(file, "gallery", user.id, (pct) =>
+          uploadQueue.setPct(original, pct),
+        );
         await uploadGalleryItem({
           data: { url, storagePath: path, fileName: file.name, mimeType: file.type, fileSize: file.size },
         });
+        uploadQueue.setStatus(original, "completed", 100);
+        succeeded++;
+      } catch (err) {
+        uploadQueue.setStatus(original, "error");
+        failed++;
+        console.error("[admin/gallery] upload failed:", err);
       }
-      toast.success(`Uploaded ${files.length} item(s)`);
-      setFiles([]);
-      qc.invalidateQueries({ queryKey: ["admin-gallery"] });
-      qc.invalidateQueries({ queryKey: ["gallery"] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
     }
+    if (failed === 0) {
+      toast.success("Upload completed successfully.");
+      setFiles([]);
+      uploadQueue.reset();
+    } else {
+      toast.error(`Upload failed. Please try again. (Uploaded: ${succeeded}, Failed: ${failed})`);
+    }
+    qc.invalidateQueries({ queryKey: ["admin-gallery"] });
+    qc.invalidateQueries({ queryKey: ["gallery"] });
+    setUploading(false);
   };
 
   return (
@@ -591,11 +608,22 @@ function GalleryTab() {
           onFilesChange={setFiles}
           accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
           disabled={uploading}
+          progress={uploadQueue.progress}
         />
+        {files.some((f) => f.type.startsWith("video/")) && (
+          <p className="text-xs text-amber-600 mt-1.5 font-medium">Videos may take longer depending on file size and internet speed.</p>
+        )}
         {files.length > 0 && (
-          <Button onClick={upload} disabled={uploading} className="mt-3 h-11">
-            {uploading ? "Uploading…" : `Upload ${files.length} item(s)`}
-          </Button>
+          <div className="mt-3 flex items-center gap-4">
+            <Button onClick={upload} disabled={uploading} className="h-11">
+              {uploading ? "Uploading…" : `Upload ${files.length} item(s)`}
+            </Button>
+            {uploading && (
+              <span className="text-sm text-amber-700 font-semibold">
+                Uploading {Math.min(uploadQueue.completedCount + uploadQueue.failedCount + 1, uploadQueue.total)} of {uploadQueue.total} files… please wait
+              </span>
+            )}
+          </div>
         )}
       </div>
     {data?.length === 0 && <p className="text-muted-foreground">No gallery items yet.</p>}
@@ -628,6 +656,7 @@ function MemoriesTab() {
   const [files, setFiles] = useState<File[]>([]);
   const [body, setBody] = useState("");
   const [posting, setPosting] = useState(false);
+  const uploadQueue = useUploadQueue();
 
   const del = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
@@ -654,11 +683,17 @@ function MemoriesTab() {
       return;
     }
     setPosting(true);
+    const original = file;
+    if (original) uploadQueue.init([original]);
     try {
       let uploaded: { url: string; path: string } | null = null;
       if (file) {
+        uploadQueue.setStatus(original!, "uploading", 0);
         file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorage(file, "memories", user.id);
+        uploaded = await uploadToFirebaseStorageResumable(file, "memories", user.id, (pct) =>
+          uploadQueue.setPct(original!, pct),
+        );
+        uploadQueue.setStatus(original!, "completed", 100);
       }
       await postMemory({
         data: {
@@ -672,11 +707,13 @@ function MemoriesTab() {
       });
       setBody("");
       setFiles([]);
-      toast.success("Memory posted");
+      uploadQueue.reset();
+      toast.success("Upload completed successfully. Memory posted.");
       qc.invalidateQueries({ queryKey: ["admin-memories"] });
       qc.invalidateQueries({ queryKey: ["memories"] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      if (original) uploadQueue.setStatus(original, "error");
+      toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setPosting(false);
     }
@@ -687,10 +724,13 @@ function MemoriesTab() {
       <div className="rounded-xl border border-border bg-card p-5 mb-6 space-y-3">
         <h3 className="font-semibold">Post a memory with photo</h3>
         <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="Share a memory…" />
-        <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple={false} disabled={posting} />
-        <Button onClick={post} disabled={posting || !body.trim()} className="h-11">
-          {posting ? "Posting…" : "Post memory"}
-        </Button>
+        <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple={false} disabled={posting} progress={uploadQueue.progress} />
+        <div className="flex items-center gap-4">
+          <Button onClick={post} disabled={posting || !body.trim()} className="h-11">
+            {posting ? "Posting…" : "Post memory"}
+          </Button>
+          {posting && files.length > 0 && <span className="text-sm text-amber-700 font-semibold">Uploading… please wait</span>}
+        </div>
       </div>
       {data?.length === 0 && <p className="text-muted-foreground">No memories yet.</p>}
       <div className="space-y-3">
@@ -715,6 +755,7 @@ function EventsTab() {
   const { data } = useQuery({ queryKey: ["admin-events"], queryFn: () => adminListEvents() });
   const [coverFiles, setCoverFiles] = useState<File[]>([]);
   const [creating, setCreating] = useState(false);
+  const uploadQueue = useUploadQueue();
 
   const create = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -730,11 +771,17 @@ function EventsTab() {
     }
 
     setCreating(true);
+    const original = file;
+    if (original) uploadQueue.init([original]);
     try {
       let uploaded: { url: string; path: string } | null = null;
       if (file) {
+        uploadQueue.setStatus(original!, "uploading", 0);
         file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorage(file, "event-covers", user.id);
+        uploaded = await uploadToFirebaseStorageResumable(file, "event-covers", user.id, (pct) =>
+          uploadQueue.setPct(original!, pct),
+        );
+        uploadQueue.setStatus(original!, "completed", 100);
       }
       await adminCreateEvent({
         data: {
@@ -751,11 +798,13 @@ function EventsTab() {
       });
       form.reset();
       setCoverFiles([]);
-      toast.success("Event created");
+      uploadQueue.reset();
+      toast.success("Upload completed successfully. Event created.");
       qc.invalidateQueries({ queryKey: ["admin-events"] });
       qc.invalidateQueries({ queryKey: ["events"] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      if (original) uploadQueue.setStatus(original, "error");
+      toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setCreating(false);
     }
@@ -780,11 +829,14 @@ function EventsTab() {
         <div className="sm:col-span-2"><Label>Description</Label><Textarea name="description" rows={3} /></div>
         <div className="sm:col-span-2">
           <Label>Cover image (optional)</Label>
-          <DropzoneUpload files={coverFiles} onFilesChange={setCoverFiles} accept="image/*" multiple={false} disabled={creating} className="mt-1" />
+          <DropzoneUpload files={coverFiles} onFilesChange={setCoverFiles} accept="image/*" multiple={false} disabled={creating} className="mt-1" progress={uploadQueue.progress} />
         </div>
-        <Button type="submit" disabled={creating} className="sm:col-span-2 h-11">
-          {creating ? "Creating…" : "Create event"}
-        </Button>
+        <div className="sm:col-span-2 flex items-center gap-4">
+          <Button type="submit" disabled={creating} className="h-11">
+            {creating ? "Creating…" : "Create event"}
+          </Button>
+          {creating && coverFiles.length > 0 && <span className="text-sm text-amber-700 font-semibold">Uploading… please wait</span>}
+        </div>
       </form>
       <div className="mt-6 space-y-3">
         {data?.map((e) => (

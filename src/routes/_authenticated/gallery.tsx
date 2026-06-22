@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   listGallery,
   uploadGalleryItem,
+  editGalleryItem,
   deleteGalleryItem,
   toggleGalleryLike,
   addGalleryComment,
@@ -15,12 +16,13 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, Film, Image, FileText, Trash2, Heart, MessageCircle, Send } from "lucide-react";
+import { Upload, Film, Image, FileText, Trash2, Heart, MessageCircle, Send, Pencil, MapPin, Calendar, Users } from "lucide-react";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
-import { uploadToFirebaseStorage, deleteFromFirebaseStorage } from "@/lib/storage";
+import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
+import { useUploadQueue } from "@/hooks/useUploadQueue";
 
 export const Route = createFileRoute("/_authenticated/gallery")({
   head: () => ({ meta: [{ title: "Photo & Video Gallery — SIMCOSA 84–85" }] }),
@@ -44,8 +46,12 @@ function Gallery() {
   const qc = useQueryClient();
   const [files, setFiles] = useState<File[]>([]);
   const [caption, setCaption] = useState("");
+  const [title, setTitle] = useState("");
+  const [location, setLocation] = useState("");
+  const [takenDate, setTakenDate] = useState("");
+  const [people, setPeople] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const uploadQueue = useUploadQueue();
   const [activeFilter, setActiveFilter] = useState("All");
   const [showUpload, setShowUpload] = useState(false);
   const [lb, setLb] = useState<{ images: LightboxImage[]; index: number } | null>(null);
@@ -69,14 +75,19 @@ function Gallery() {
       }
     }
     setUploading(true);
-    setUploadProgress({ done: 0, total: files.length });
-    try {
-      for (let i = 0; i < files.length; i++) {
-        let file = files[i];
+    uploadQueue.init(files);
+    let succeeded = 0;
+    let failed = 0;
+    for (const original of files) {
+      let file = original;
+      uploadQueue.setStatus(original, "uploading", 0);
+      try {
         if (file.type.startsWith("image/")) {
           file = await compressImage(file);
         }
-        const { url, path } = await uploadToFirebaseStorage(file, "gallery", user.id);
+        const { url, path } = await uploadToFirebaseStorageResumable(file, "gallery", user.id, (pct) =>
+          uploadQueue.setPct(original, pct),
+        );
         await uploadGalleryItem({
           data: {
             url,
@@ -85,21 +96,35 @@ function Gallery() {
             mimeType: file.type,
             fileSize: file.size,
             caption: caption || undefined,
+            title: title || undefined,
+            location: location || undefined,
+            takenDate: takenDate || undefined,
+            people: people || undefined,
           },
         });
-        setUploadProgress({ done: i + 1, total: files.length });
+        uploadQueue.setStatus(original, "completed", 100);
+        succeeded++;
+      } catch (err) {
+        uploadQueue.setStatus(original, "error");
+        failed++;
+        console.error("[gallery] upload failed:", err);
       }
-      toast.success(`Uploaded ${files.length} item(s) successfully!`);
+    }
+    if (failed === 0) {
+      toast.success("Upload completed successfully.");
       setFiles([]);
       setCaption("");
+      setTitle("");
+      setLocation("");
+      setTakenDate("");
+      setPeople("");
       setShowUpload(false);
-      qc.invalidateQueries({ queryKey: ["gallery"] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-      setUploadProgress(null);
+      uploadQueue.reset();
+    } else {
+      toast.error(`Upload failed. Please try again. (Uploaded: ${succeeded}, Failed: ${failed})`);
     }
+    qc.invalidateQueries({ queryKey: ["gallery"] });
+    setUploading(false);
   };
 
   const images = items?.filter(i => i.media_type === "image") ?? [];
@@ -171,19 +196,42 @@ function Gallery() {
                   accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
                   disabled={uploading}
                   className="mt-1"
+                  progress={uploadQueue.progress}
                 />
+                {files.some((f) => f.type.startsWith("video/")) && (
+                  <p className="text-xs text-amber-600 mt-1.5 font-medium">Videos may take longer depending on file size and internet speed.</p>
+                )}
               </div>
-              <div>
-                <Label htmlFor="caption" className="font-semibold text-gray-700">Caption (optional, applied to all)</Label>
-                <Input id="caption" name="caption" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Add a caption…" className="h-12 mt-1 border-amber-200" />
+              <p className="text-xs text-gray-500 -mt-1">Optional details below are applied to all selected files. You can edit each photo's details later.</p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="title" className="font-semibold text-gray-700">Title (optional)</Label>
+                  <Input id="title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Reunion Day" className="h-12 mt-1 border-amber-200" />
+                </div>
+                <div>
+                  <Label htmlFor="caption" className="font-semibold text-gray-700">Caption / memory note (optional)</Label>
+                  <Input id="caption" name="caption" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Add a caption…" className="h-12 mt-1 border-amber-200" />
+                </div>
+                <div>
+                  <Label htmlFor="location" className="font-semibold text-gray-700">Place / location (optional)</Label>
+                  <Input id="location" name="location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Vijayawada" className="h-12 mt-1 border-amber-200" />
+                </div>
+                <div>
+                  <Label htmlFor="takenDate" className="font-semibold text-gray-700">Date taken (optional)</Label>
+                  <Input id="takenDate" name="takenDate" type="date" value={takenDate} onChange={(e) => setTakenDate(e.target.value)} className="h-12 mt-1 border-amber-200" />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="people" className="font-semibold text-gray-700">People in photo (optional)</Label>
+                  <Input id="people" name="people" value={people} onChange={(e) => setPeople(e.target.value)} placeholder="e.g. Dr. Satya, Dr. Vijaya Gopal" className="h-12 mt-1 border-amber-200" />
+                </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <Button type="submit" disabled={uploading || files.length === 0} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl shrink-0">
                   {uploading ? "Uploading…" : `Upload ${files.length > 0 ? files.length + " item(s)" : ""}`}
                 </Button>
-                {uploadProgress && (
-                  <span className="text-sm text-gray-500 font-medium">
-                    Uploading {uploadProgress.done}/{uploadProgress.total}…
+                {uploading && (
+                  <span className="text-sm text-amber-700 font-semibold">
+                    Uploading {Math.min(uploadQueue.completedCount + uploadQueue.failedCount + 1, uploadQueue.total)} of {uploadQueue.total} files… please wait
                   </span>
                 )}
               </div>
@@ -332,6 +380,7 @@ function Gallery() {
           if (!it) return null;
           return (
             <div className="rounded-2xl bg-white/95 backdrop-blur p-3">
+              <GalleryDetails item={it} canEdit={isAdmin || it.uploaded_by === user?.id} />
               <LikeCommentBar item={it} onToggleLike={toggleLike} />
               <GalleryComments item={it} />
             </div>
@@ -457,6 +506,102 @@ function GalleryComments({ item }: { item: GalleryRow }) {
   );
 }
 
+function GalleryDetails({ item, canEdit }: { item: GalleryRow; canEdit?: boolean }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(item.title ?? "");
+  const [caption, setCaption] = useState(item.caption ?? "");
+  const [location, setLocation] = useState(item.location ?? "");
+  const [takenDate, setTakenDate] = useState(item.taken_date ? item.taken_date.slice(0, 10) : "");
+  const [people, setPeople] = useState(item.people ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const hasDetails = item.title || item.caption || item.location || item.taken_date || item.people;
+
+  const startEdit = () => {
+    setTitle(item.title ?? "");
+    setCaption(item.caption ?? "");
+    setLocation(item.location ?? "");
+    setTakenDate(item.taken_date ? item.taken_date.slice(0, 10) : "");
+    setPeople(item.people ?? "");
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await editGalleryItem({
+        data: {
+          id: item.id,
+          title: title || undefined,
+          caption: caption || undefined,
+          location: location || undefined,
+          takenDate: takenDate || undefined,
+          people: people || undefined,
+        },
+      });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+      setEditing(false);
+      toast.success("Details updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update details");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="px-1 pb-2 space-y-2">
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="h-9 text-sm border-amber-200" />
+        <Input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Description / memory note" className="h-9 text-sm border-amber-200" />
+        <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Place / location" className="h-9 text-sm border-amber-200" />
+        <Input type="date" value={takenDate} onChange={(e) => setTakenDate(e.target.value)} className="h-9 text-sm border-amber-200" />
+        <Input value={people} onChange={(e) => setPeople(e.target.value)} placeholder="People in photo" className="h-9 text-sm border-amber-200" />
+        <div className="flex gap-2">
+          <Button type="button" onClick={save} disabled={saving} className="h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl px-4 text-sm">
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setEditing(false)} disabled={saving} className="h-9 rounded-xl px-4 text-sm">
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasDetails && !canEdit) return null;
+
+  return (
+    <div className="px-1 pb-1">
+      {item.title && <p className="text-sm font-bold text-gray-800">{item.title}</p>}
+      {item.caption && <p className="text-sm text-gray-600">{item.caption}</p>}
+      {(item.location || item.taken_date || item.people) && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-gray-500">
+          {item.location && (
+            <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-amber-500" /> Taken at: {item.location}</span>
+          )}
+          {item.taken_date && (
+            <span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5 text-amber-500" /> Date: {item.taken_date.slice(0, 10)}</span>
+          )}
+          {item.people && (
+            <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5 text-amber-500" /> With: {item.people}</span>
+          )}
+        </div>
+      )}
+      {canEdit && (
+        <button
+          type="button"
+          onClick={startEdit}
+          className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 font-semibold mt-1.5"
+        >
+          <Pencil className="h-3 w-3" /> Edit details
+        </button>
+      )}
+    </div>
+  );
+}
+
 function GalleryItem({
   item,
   onOpen,
@@ -500,7 +645,9 @@ function GalleryItem({
           )
         }
       </div>
-      {item.caption && <p className="px-3 pt-3 text-sm text-gray-600 font-medium">{item.caption}</p>}
+      <div className="px-3 pt-3">
+        <GalleryDetails item={item} canEdit={canDelete} />
+      </div>
       <div className="px-2 pb-2 pt-1 border-t border-amber-50 mt-2">
         <LikeCommentBar
           item={item}

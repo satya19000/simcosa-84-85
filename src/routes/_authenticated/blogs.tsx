@@ -12,8 +12,9 @@ import { PenLine, Star, ArrowRight, BookOpen } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
-import { uploadToFirebaseStorage } from "@/lib/storage";
+import { uploadToFirebaseStorageResumable } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
+import { useUploadQueue } from "@/hooks/useUploadQueue";
 
 export const Route = createFileRoute("/_authenticated/blogs")({
   head: () => ({
@@ -88,6 +89,7 @@ function Blogs() {
   const [posting, setPosting] = useState(false);
   const [category, setCategory] = useState<BlogCategory>("general");
   const [coverFiles, setCoverFiles] = useState<File[]>([]);
+  const uploadQueue = useUploadQueue();
 
   const { data: blogs } = useQuery({
     queryKey: ["blogs", activeCategory],
@@ -111,11 +113,17 @@ function Blogs() {
       }
     }
     setPosting(true);
+    const original = file;
+    if (original) uploadQueue.init([original]);
     try {
       let uploaded: { url: string; path: string } | null = null;
       if (file) {
+        uploadQueue.setStatus(original!, "uploading", 0);
         file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorage(file, "blog-images", user.id);
+        uploaded = await uploadToFirebaseStorageResumable(file, "blog-images", user.id, (pct) =>
+          uploadQueue.setPct(original!, pct),
+        );
+        uploadQueue.setStatus(original!, "completed", 100);
       }
       await createBlog({
         data: {
@@ -134,10 +142,12 @@ function Blogs() {
       setCategory("general");
       setCoverFiles([]);
       setShowForm(false);
-      toast.success("Your blog has been published! 📝");
+      uploadQueue.reset();
+      toast.success("Upload completed successfully. Your blog has been published! 📝");
       qc.invalidateQueries({ queryKey: ["blogs"] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to publish");
+      if (original) uploadQueue.setStatus(original, "error");
+      toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setPosting(false);
     }
@@ -201,9 +211,11 @@ function Blogs() {
                 multiple={false}
                 disabled={posting}
                 className="mt-1"
+                progress={uploadQueue.progress}
               />
             </div>
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end gap-4">
+              {posting && coverFiles.length > 0 && <span className="text-sm text-amber-700 font-semibold">Uploading… please wait</span>}
               <Button type="submit" disabled={posting} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl">
                 {posting ? "Publishing…" : "Publish"}
               </Button>

@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { listMemories, toggleLike as toggleLikeFn } from "@/api/memories";
 import { useAuth } from "@/lib/auth";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
+import { OnlineMembersWidget } from "@/components/OnlineMembers";
 
 export const Route = createFileRoute("/_authenticated/home")({
   head: () => ({
@@ -160,6 +161,9 @@ function Home() {
       {/* ── QUICK FEATURES ── */}
       <section className="py-20 px-4 bg-gradient-to-b from-amber-50/60 to-white">
         <div className="mx-auto max-w-6xl">
+          <div className="mb-10 max-w-sm">
+            <OnlineMembersWidget />
+          </div>
           <div className="text-center mb-12">
             <p className="text-amber-600 font-bold text-sm uppercase tracking-widest mb-2">Everything in One Place</p>
             <h2>Your Batch Portal Features</h2>
