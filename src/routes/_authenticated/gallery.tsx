@@ -128,9 +128,13 @@ function Gallery() {
     setUploading(false);
   };
 
-  const images = items?.filter(i => i.media_type === "image") ?? [];
+  // Admin Gallery shows every non-deleted row unconditionally. Bucket every
+  // item here too — video/document are explicit, everything else (including
+  // legacy/unexpected media_type values) falls into the image bucket — so no
+  // row with an available file is ever silently dropped from the public page.
   const videos = items?.filter(i => i.media_type === "video") ?? [];
   const documents = items?.filter(i => i.media_type === "document") ?? [];
+  const images = items?.filter(i => i.media_type !== "video" && i.media_type !== "document") ?? [];
 
   const onDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
