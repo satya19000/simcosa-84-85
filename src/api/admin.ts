@@ -520,6 +520,7 @@ export interface AdminGalleryRow {
   media_type: string;
   storage_path: string;
   file_url: string | null;
+  fb_storage_path: string | null;
   file_available: boolean;
   created_at: string;
   uploaded_by: string | null;
@@ -542,6 +543,7 @@ export const adminListGallery = createServerFn({ method: "GET" })
     const res = await query<AdminGalleryRow>(
       `SELECT g.id, g.title, g.caption, g.media_type, g.storage_path,
          ${ADMIN_FILE_URL_SQL} AS file_url,
+         g.fb_storage_path,
          (${ADMIN_FILE_URL_SQL}) IS NOT NULL AS file_available,
          g.created_at, g.uploaded_by,
          json_build_object('full_name', p.full_name) AS profiles
