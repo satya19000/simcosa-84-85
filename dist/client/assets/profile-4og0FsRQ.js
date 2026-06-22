@@ -1,0 +1,1 @@
+import{f as e,a1 as a,h as d}from"./index-CKBuCjaF.js";const f=e({method:"POST"}).middleware([a]).handler(d("f9d52e4aeeff58384a28de1e963c08045faa37f05a3aef0d7e0d21d6d85acbde")),o=e({method:"POST"}).middleware([a]).handler(d("2babc95a84a186c74a261bb2201f89a96ad937e1592376ab57932ca022d0f5fe"));export{f as updateMyProfile,o as uploadProfilePhoto};

@@ -57,10 +57,14 @@ function Gallery() {
   const [showUpload, setShowUpload] = useState(false);
   const [lb, setLb] = useState<{ images: LightboxImage[]; index: number } | null>(null);
 
-  const { data: items } = useQuery({
+  const { data: items, isLoading, isError, error } = useQuery({
     queryKey: ["gallery"],
     queryFn: () => listGallery(),
   });
+
+  if (isError) {
+    console.error("[gallery] failed to load gallery items:", error);
+  }
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -259,8 +263,22 @@ function Gallery() {
           ))}
         </div>
 
+        {/* Loading state — don't silently render a blank page while fetching */}
+        {isLoading && (
+          <div className="rounded-2xl border border-amber-100 bg-white p-6 text-center text-gray-500 font-semibold mb-8">
+            Loading gallery…
+          </div>
+        )}
+
+        {/* Error state — don't silently render a blank page if the query fails */}
+        {isError && (
+          <div className="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-red-600 font-semibold mb-8">
+            Unable to load gallery. Please contact admin.
+          </div>
+        )}
+
         {/* Built-in preview images */}
-        {items?.length === 0 && (
+        {!isLoading && !isError && items?.length === 0 && (
           <div>
             <div className="mb-6 flex items-center gap-3">
               <Image className="h-5 w-5 text-amber-500" />
