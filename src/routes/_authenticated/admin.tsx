@@ -11,7 +11,7 @@ import {
   adminListExpenses, adminCreateExpense,
   adminListSupport, adminResolveSupport,
   adminListBlogs, adminDeleteBlog,
-  adminListGallery, adminDeleteGalleryItem, type AdminGalleryRow,
+  adminListGallery, adminDeleteGalleryItem, adminReorderGallery, type AdminGalleryRow,
   adminListMemories, adminDeleteMemory, adminFindDuplicateMemories, adminMergeMemories, adminEditMemoryAuthor,
 } from "@/api/admin";
 import { uploadGalleryItem, replaceGalleryItemFile } from "@/api/gallery";
@@ -31,6 +31,7 @@ import { DropzoneUpload } from "@/components/DropzoneUpload";
 import { toast } from "sonner";
 import { useState } from "react";
 import { format } from "date-fns";
+import { ArrowUp, ArrowDown, ChevronsUp, ChevronsDown } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin Dashboard" }] }),
@@ -586,6 +587,30 @@ function GalleryTab() {
     }
   };
 
+  const moveGalleryItem = async (id: string, kind: "up" | "down" | "top" | "bottom") => {
+    if (!data) return;
+    const ids = data.map((g) => g.id);
+    const idx = ids.indexOf(id);
+    if (idx === -1) return;
+    let newIdx: number;
+    if (kind === "up") newIdx = idx - 1;
+    else if (kind === "down") newIdx = idx + 1;
+    else if (kind === "top") newIdx = 0;
+    else newIdx = ids.length - 1;
+    if (newIdx < 0 || newIdx >= ids.length || newIdx === idx) return;
+    const reordered = [...ids];
+    reordered.splice(idx, 1);
+    reordered.splice(newIdx, 0, id);
+    try {
+      await adminReorderGallery({ data: { orderedItemIds: reordered } });
+      qc.invalidateQueries({ queryKey: ["admin-gallery"] });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+      toast.success("Photo order updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to update order");
+    }
+  };
+
   const upload = async () => {
     if (files.length === 0 || !user) return;
     for (const file of files) {
@@ -816,9 +841,47 @@ function GalleryTab() {
       </div>
     {data?.length === 0 && <p className="text-muted-foreground">No gallery items yet.</p>}
     <div className="space-y-3">
-      {data?.map((g) => (
+      {data?.map((g, gi) => (
         <div key={g.id} className="rounded-lg border border-border bg-card p-4 flex flex-wrap justify-between gap-3 items-center">
           <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-0.5 shrink-0">
+              <button
+                type="button"
+                aria-label="Move to top"
+                disabled={gi === 0}
+                onClick={() => moveGalleryItem(g.id, "top")}
+                className="h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
+              >
+                <ChevronsUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Move up"
+                disabled={gi === 0}
+                onClick={() => moveGalleryItem(g.id, "up")}
+                className="h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
+              >
+                <ArrowUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Move down"
+                disabled={gi === (data?.length ?? 0) - 1}
+                onClick={() => moveGalleryItem(g.id, "down")}
+                className="h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Move to bottom"
+                disabled={gi === (data?.length ?? 0) - 1}
+                onClick={() => moveGalleryItem(g.id, "bottom")}
+                className="h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
+              >
+                <ChevronsDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
             {g.file_available && g.media_type === "image" ? (
               <img src={g.file_url!} alt={g.caption ?? g.title ?? "Photo"} className="h-14 w-14 rounded-lg object-cover shrink-0" loading="lazy" />
             ) : g.file_available ? (
