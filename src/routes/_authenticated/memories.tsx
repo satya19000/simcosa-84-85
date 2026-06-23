@@ -1,13 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { listMemories, postMemory, toggleLike as toggleLikeFn, addComment, deleteMemory, deleteComment } from "@/api/memories";
+import {
+  listMemories, postMemory, addMemoryImages, deleteMemoryImage, editMemory,
+  toggleLike as toggleLikeFn, addComment, deleteMemory, deleteComment,
+  type MemoryImage,
+} from "@/api/memories";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Heart, MessageCircle, BookOpen, Send, Trash2 } from "lucide-react";
+import { Heart, MessageCircle, BookOpen, Send, Trash2, Pencil, ImagePlus, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
@@ -15,9 +19,10 @@ import { DropzoneUpload } from "@/components/DropzoneUpload";
 import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
 import { useUploadQueue } from "@/hooks/useUploadQueue";
+import { cn } from "@/lib/utils";
 
 const ALLOWED_MEMORY_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
-const MAX_MEMORY_UPLOAD_MB = 15;
+const MAX_MEMORY_UPLOAD_MB = 10;
 
 export const Route = createFileRoute("/_authenticated/memories")({
   head: () => ({ meta: [{ title: "Memories Wall — SIMCOSA 84–85" }] }),
@@ -30,25 +35,102 @@ const AVATAR_COLORS = [
   "bg-purple-100 text-purple-700",
 ];
 
+function validateFiles(files: File[]): string | null {
+  for (const f of files) {
+    if (!ALLOWED_MEMORY_IMAGE_TYPES.has(f.type)) {
+      return `"${f.name}" is an unsupported format. Please use JPG, PNG, or WEBP.`;
+    }
+    if (f.size > MAX_MEMORY_UPLOAD_MB * 1024 * 1024) {
+      return `"${f.name}" is too large. Maximum size is ${MAX_MEMORY_UPLOAD_MB}MB.`;
+    }
+  }
+  return null;
+}
+
+/** Uploads each file to Firebase Storage with per-file progress, returning metadata for addMemoryImages. */
+async function uploadMemoryImages(
+  files: File[],
+  userId: string,
+  uploadQueue: ReturnType<typeof useUploadQueue>,
+) {
+  uploadQueue.init(files);
+  const uploaded: { url: string; storagePath: string; fileName: string; mimeType: string; fileSize: number }[] = [];
+  for (const original of files) {
+    try {
+      uploadQueue.setStatus(original, "uploading", 0);
+      const compressed = await compressImage(original);
+      const res = await uploadToFirebaseStorageResumable(compressed, "memories", userId, (pct) =>
+        uploadQueue.setPct(original, pct),
+      );
+      uploaded.push({
+        url: res.url,
+        storagePath: res.path,
+        fileName: compressed.name,
+        mimeType: compressed.type,
+        fileSize: compressed.size,
+      });
+      uploadQueue.setStatus(original, "completed", 100);
+    } catch (err) {
+      uploadQueue.setStatus(original, "error");
+      throw err;
+    }
+  }
+  return uploaded;
+}
+
+function MemoryImageGrid({ images, onOpen }: { images: MemoryImage[]; onOpen: (idx: number) => void }) {
+  if (images.length === 0) return null;
+  if (images.length === 1) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(0)}
+        className="mt-4 block w-full overflow-hidden rounded-xl border border-amber-100 cursor-zoom-in"
+      >
+        <img
+          src={images[0].image_url}
+          alt="Memory photo"
+          loading="lazy"
+          className="w-full max-h-96 object-cover hover:scale-[1.02] transition-transform duration-300"
+        />
+      </button>
+    );
+  }
+  const gridCols = images.length === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3";
+  return (
+    <div className={cn("mt-4 grid gap-1.5", gridCols)}>
+      {images.map((img, i) => (
+        <button
+          key={img.id}
+          type="button"
+          onClick={() => onOpen(i)}
+          className="overflow-hidden rounded-lg border border-amber-100 cursor-zoom-in aspect-square"
+        >
+          <img
+            src={img.image_url}
+            alt="Memory photo"
+            loading="lazy"
+            className="h-full w-full object-cover hover:scale-[1.05] transition-transform duration-300"
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Memories() {
   const { user, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [posting, setPosting] = useState(false);
-  const [lbIndex, setLbIndex] = useState<number | null>(null);
+  const [lightbox, setLightbox] = useState<{ memoryId: string; index: number } | null>(null);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const uploadQueue = useUploadQueue();
 
   const { data: memories } = useQuery({
     queryKey: ["memories"],
     queryFn: () => listMemories(),
   });
-
-  const photoMemories = (memories ?? []).filter((m) => !!m.image_url);
-  const lightboxImages: LightboxImage[] = photoMemories.map((m) => ({
-    src: m.image_url as string,
-    alt: m.title ?? m.profiles?.full_name ?? "Memory photo",
-    caption: m.title ?? (m.profiles?.full_name ? `Shared by ${m.profiles.full_name}` : undefined),
-  }));
 
   const onPost = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -58,50 +140,26 @@ function Memories() {
     const title = String(fd.get("title") || "");
     const body = String(fd.get("body") || "");
 
-    let file = photoFiles[0];
-    if (file) {
-      if (!ALLOWED_MEMORY_IMAGE_TYPES.has(file.type)) {
-        toast.error("Unsupported image format. Please use JPG, PNG, or WEBP.");
-        return;
-      }
-      if (file.size > MAX_MEMORY_UPLOAD_MB * 1024 * 1024) {
-        toast.error(`"${file.name}" is too large. Maximum size is ${MAX_MEMORY_UPLOAD_MB}MB.`);
-        return;
-      }
+    const err = validateFiles(photoFiles);
+    if (err) {
+      toast.error(err);
+      return;
     }
 
     setPosting(true);
-    const original = file;
-    if (original) uploadQueue.init([original]);
     try {
-      let uploaded: { url: string; path: string } | null = null;
-      if (file) {
-        uploadQueue.setStatus(original!, "uploading", 0);
-        file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorageResumable(file, "memories", user.id, (pct) =>
-          uploadQueue.setPct(original!, pct),
-        );
-        uploadQueue.setStatus(original!, "completed", 100);
+      const { id: memoryId } = await postMemory({ data: { title: title || undefined, body } });
+      if (photoFiles.length > 0) {
+        const uploaded = await uploadMemoryImages(photoFiles, user.id, uploadQueue);
+        await addMemoryImages({ data: { memoryId, images: uploaded } });
       }
-      await postMemory({
-        data: {
-          title: title || undefined,
-          body,
-          url: uploaded?.url,
-          storagePath: uploaded?.path,
-          fileName: file?.name,
-          mimeType: file?.type,
-          fileSize: file?.size,
-        },
-      });
       form.reset();
       setPhotoFiles([]);
       uploadQueue.reset();
       toast.success("Upload completed successfully. Your memory has been shared! 💛");
       qc.invalidateQueries({ queryKey: ["memories"] });
-    } catch (err) {
-      if (original) uploadQueue.setStatus(original, "error");
-      toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
+    } catch (err2) {
+      toast.error(err2 instanceof Error ? err2.message : "Upload failed. Please try again.");
     } finally {
       setPosting(false);
     }
@@ -122,8 +180,8 @@ function Memories() {
       const res = await deleteMemory({ data: { id } });
       toast.success("Memory deleted");
       qc.invalidateQueries({ queryKey: ["memories"] });
-      if (res.fbStoragePath) {
-        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+      for (const path of res.fbStoragePaths) {
+        deleteFromFirebaseStorage(path).catch((err) =>
           console.error("[memories] failed to delete storage object:", err),
         );
       }
@@ -131,6 +189,12 @@ function Memories() {
       toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   };
+
+  const lightboxMemory = memories?.find((m) => m.id === lightbox?.memoryId);
+  const lightboxImages: LightboxImage[] = (lightboxMemory?.images ?? []).map((img) => ({
+    src: img.image_url,
+    alt: lightboxMemory?.title ?? "Memory photo",
+  }));
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
@@ -162,12 +226,12 @@ function Memories() {
               <Textarea id="b" name="body" required rows={4} placeholder="Share a story, a moment, a person you miss from our batch days…" className="text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl resize-none" />
             </div>
             <div>
-              <Label className="font-semibold text-gray-700">Photo (optional)</Label>
+              <Label className="font-semibold text-gray-700">Photos (optional)</Label>
               <DropzoneUpload
                 files={photoFiles}
                 onFilesChange={setPhotoFiles}
                 accept="image/*"
-                multiple={false}
+                multiple
                 disabled={posting}
                 className="mt-1"
                 progress={uploadQueue.progress}
@@ -195,6 +259,7 @@ function Memories() {
           {memories?.map((m, i) => {
             const liked = m.memory_likes?.some((l: { user_id: string }) => l.user_id === user!.id);
             const initials = (m.profiles?.full_name ?? "M").charAt(0);
+            const canManage = isAdmin || m.user_id === user?.id;
             return (
               <article key={m.id} className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
                 <div className="p-6">
@@ -206,32 +271,42 @@ function Memories() {
                       <p className="font-bold text-gray-900">{m.profiles?.full_name ?? "A Batchmate"}</p>
                       <p className="text-xs text-gray-400">{format(new Date(m.created_at), "PPP")}</p>
                     </div>
-                    {(isAdmin || m.user_id === user?.id) && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteMemory(m.id)}
-                        aria-label="Delete memory"
-                        className="h-9 w-9 rounded-full flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                    {canManage && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(editingId === m.id ? null : m.id)}
+                          aria-label="Edit memory"
+                          className="h-9 w-9 rounded-full flex items-center justify-center text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteMemory(m.id)}
+                          aria-label="Delete memory"
+                          className="h-9 w-9 rounded-full flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
-                  {m.title && <h3 className="font-display text-xl font-bold text-gray-900 mb-2">{m.title}</h3>}
-                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{m.body}</p>
-                  {m.image_url && (
-                    <button
-                      type="button"
-                      onClick={() => setLbIndex(photoMemories.findIndex((pm) => pm.id === m.id))}
-                      className="mt-4 block w-full overflow-hidden rounded-xl border border-amber-100 cursor-zoom-in"
-                    >
-                      <img
-                        src={m.image_url}
-                        alt={m.title ?? "Memory photo"}
-                        loading="lazy"
-                        className="w-full max-h-96 object-cover hover:scale-[1.02] transition-transform duration-300"
+
+                  {editingId === m.id ? (
+                    <EditMemoryPanel
+                      memory={m}
+                      onDone={() => setEditingId(null)}
+                    />
+                  ) : (
+                    <>
+                      {m.title && <h3 className="font-display text-xl font-bold text-gray-900 mb-2">{m.title}</h3>}
+                      <p className="text-gray-700 leading-relaxed whitespace-pre-line">{m.body}</p>
+                      <MemoryImageGrid
+                        images={m.images}
+                        onOpen={(idx) => setLightbox({ memoryId: m.id, index: idx })}
                       />
-                    </button>
+                    </>
                   )}
                 </div>
 
@@ -259,10 +334,110 @@ function Memories() {
 
       <ImageLightbox
         images={lightboxImages}
-        index={lbIndex}
-        onClose={() => setLbIndex(null)}
-        onIndexChange={setLbIndex}
+        index={lightbox?.index ?? null}
+        onClose={() => setLightbox(null)}
+        onIndexChange={(idx) => setLightbox((lb) => (lb ? { ...lb, index: idx } : lb))}
       />
+    </div>
+  );
+}
+
+function EditMemoryPanel({
+  memory,
+  onDone,
+}: {
+  memory: { id: string; title: string | null; body: string; images: MemoryImage[]; user_id: string };
+  onDone: () => void;
+}) {
+  const { user, isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(memory.title ?? "");
+  const [body, setBody] = useState(memory.body);
+  const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [saving, setSaving] = useState(false);
+  const uploadQueue = useUploadQueue();
+  const canManageImages = isAdmin || memory.user_id === user?.id;
+
+  const save = async () => {
+    if (!body.trim() || !user) {
+      toast.error("Your memory text cannot be empty.");
+      return;
+    }
+    const err = validateFiles(newFiles);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    setSaving(true);
+    try {
+      await editMemory({ data: { id: memory.id, title: title || undefined, body } });
+      if (newFiles.length > 0) {
+        const uploaded = await uploadMemoryImages(newFiles, user.id, uploadQueue);
+        await addMemoryImages({ data: { memoryId: memory.id, images: uploaded } });
+      }
+      setNewFiles([]);
+      uploadQueue.reset();
+      toast.success("Memory updated");
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      onDone();
+    } catch (err2) {
+      toast.error(err2 instanceof Error ? err2.message : "Update failed. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeImage = async (imageId: string) => {
+    if (!confirm("Remove this photo?")) return;
+    try {
+      const res = await deleteMemoryImage({ data: { id: imageId } });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      if (res.fbStoragePath) {
+        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+          console.error("[memories] failed to delete storage object:", err),
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove photo");
+    }
+  };
+
+  return (
+    <div className="space-y-3 bg-amber-50/50 rounded-xl p-4">
+      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (optional)" className="h-11 border-amber-200 rounded-xl" />
+      <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className="border-amber-200 rounded-xl resize-none" />
+
+      {canManageImages && memory.images.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+          {memory.images.map((img) => (
+            <div key={img.id} className="relative rounded-lg overflow-hidden border border-amber-100 aspect-square">
+              <img src={img.image_url} alt="" className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => removeImage(img.id)}
+                aria-label="Remove photo"
+                className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 hover:bg-red-600 text-white flex items-center justify-center"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {canManageImages && (
+        <div>
+          <Label className="font-semibold text-gray-700 flex items-center gap-1.5"><ImagePlus className="h-4 w-4" /> Add more photos</Label>
+          <DropzoneUpload files={newFiles} onFilesChange={setNewFiles} accept="image/*" multiple disabled={saving} progress={uploadQueue.progress} className="mt-1" />
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onDone} disabled={saving} className="h-10 rounded-xl">Cancel</Button>
+        <Button type="button" onClick={save} disabled={saving} className="h-10 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl">
+          {saving ? "Saving…" : "Save changes"}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -260,6 +260,21 @@ ALTER TABLE memories ADD COLUMN IF NOT EXISTS fb_storage_path text;
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS file_name text;
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS file_size bigint;
 
+-- Child table: supports many images per memory post. Legacy single-image
+-- memories (image_url/fb_storage_path on memories itself) keep working;
+-- listMemories() maps them into the images array when no rows exist here.
+CREATE TABLE IF NOT EXISTS memory_images (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  memory_id uuid REFERENCES memories(id) ON DELETE CASCADE NOT NULL,
+  image_url text NOT NULL,
+  fb_storage_path text,
+  file_name text,
+  mime_type text,
+  file_size bigint,
+  sort_order integer DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS memory_likes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   memory_id uuid REFERENCES memories(id) ON DELETE CASCADE NOT NULL,

@@ -11,11 +11,11 @@ import {
   adminListExpenses, adminCreateExpense,
   adminListSupport, adminResolveSupport,
   adminListBlogs, adminDeleteBlog,
-  adminListGallery, adminDeleteGalleryItem,
+  adminListGallery, adminDeleteGalleryItem, type AdminGalleryRow,
   adminListMemories, adminDeleteMemory,
 } from "@/api/admin";
 import { uploadGalleryItem, replaceGalleryItemFile } from "@/api/gallery";
-import { postMemory } from "@/api/memories";
+import { postMemory, addMemoryImages } from "@/api/memories";
 import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
 import { useUploadQueue } from "@/hooks/useUploadQueue";
@@ -529,6 +529,11 @@ function BlogsTab() {
 
 const MAX_ADMIN_UPLOAD_BYTES = 15 * 1024 * 1024;
 
+/** Trims and lowercases a filename/storage_path for case-insensitive bulk-replace matching. */
+function normalizeFileName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 function GalleryTab() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -537,6 +542,13 @@ function GalleryTab() {
   const [uploading, setUploading] = useState(false);
   const uploadQueue = useUploadQueue();
   const [replacingId, setReplacingId] = useState<string | null>(null);
+
+  const [bulkFiles, setBulkFiles] = useState<File[]>([]);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const bulkQueue = useUploadQueue();
+  const [bulkSummary, setBulkSummary] = useState<{ matched: number; uploaded: number; failed: number; unmatched: File[] } | null>(null);
+  const [unmatchedUploading, setUnmatchedUploading] = useState(false);
+  const unmatchedQueue = useUploadQueue();
 
   const replaceFile = async (id: string, file: File) => {
     if (!user) return;
@@ -619,8 +631,164 @@ function GalleryTab() {
     setUploading(false);
   };
 
+  // Matches each selected file by filename against gallery_items.storage_path
+  // (case-insensitive, trimmed) and replaces only rows that are still missing
+  // a file (no file_url and no fb_storage_path) and not deleted. Each row is
+  // matched at most once, even if multiple selected files share a name.
+  const runBulkReplace = async () => {
+    if (bulkFiles.length === 0 || !user || !data) return;
+    setBulkRunning(true);
+    bulkQueue.init(bulkFiles);
+
+    const eligible = data.filter((g) => !g.file_url && !g.fb_storage_path);
+    const usedRowIds = new Set<string>();
+    const matches: { file: File; row: AdminGalleryRow }[] = [];
+    const unmatched: File[] = [];
+    for (const file of bulkFiles) {
+      const row = eligible.find(
+        (g) => !usedRowIds.has(g.id) && normalizeFileName(g.storage_path) === normalizeFileName(file.name),
+      );
+      if (row) {
+        usedRowIds.add(row.id);
+        matches.push({ file, row });
+      } else {
+        unmatched.push(file);
+        bulkQueue.setStatus(file, "error");
+      }
+    }
+
+    let uploaded = 0;
+    let failed = 0;
+    for (const { file, row } of matches) {
+      bulkQueue.setStatus(file, "uploading", 0);
+      try {
+        const compressed = file.type.startsWith("image/") ? await compressImage(file) : file;
+        const { url, path } = await uploadToFirebaseStorageResumable(compressed, "gallery", user.id, (pct) =>
+          bulkQueue.setPct(file, pct),
+        );
+        await replaceGalleryItemFile({
+          data: { id: row.id, url, storagePath: path, fileName: compressed.name, mimeType: compressed.type, fileSize: compressed.size },
+        });
+        bulkQueue.setStatus(file, "completed", 100);
+        uploaded++;
+      } catch (err) {
+        bulkQueue.setStatus(file, "error");
+        failed++;
+        console.error("[admin/gallery] bulk replace failed:", err);
+      }
+    }
+
+    setBulkSummary({ matched: matches.length, uploaded, failed, unmatched });
+    if (uploaded > 0) {
+      toast.success(`Bulk replace: ${uploaded} file(s) restored.`);
+    }
+    if (failed > 0) {
+      toast.error(`Bulk replace: ${failed} file(s) failed to upload.`);
+    }
+    qc.invalidateQueries({ queryKey: ["admin-gallery"] });
+    qc.invalidateQueries({ queryKey: ["gallery"] });
+    setBulkRunning(false);
+  };
+
+  const uploadUnmatchedAsNew = async () => {
+    const unmatched = bulkSummary?.unmatched ?? [];
+    if (unmatched.length === 0 || !user) return;
+    setUnmatchedUploading(true);
+    unmatchedQueue.init(unmatched);
+    let succeeded = 0;
+    let failed = 0;
+    for (const original of unmatched) {
+      let file = original;
+      unmatchedQueue.setStatus(original, "uploading", 0);
+      try {
+        if (file.type.startsWith("image/")) {
+          file = await compressImage(file);
+        }
+        const { url, path } = await uploadToFirebaseStorageResumable(file, "gallery", user.id, (pct) =>
+          unmatchedQueue.setPct(original, pct),
+        );
+        await uploadGalleryItem({
+          data: { url, storagePath: path, fileName: file.name, mimeType: file.type, fileSize: file.size },
+        });
+        unmatchedQueue.setStatus(original, "completed", 100);
+        succeeded++;
+      } catch (err) {
+        unmatchedQueue.setStatus(original, "error");
+        failed++;
+        console.error("[admin/gallery] unmatched upload failed:", err);
+      }
+    }
+    if (failed === 0) {
+      toast.success("Unmatched files uploaded as new gallery items.");
+      setBulkSummary((s) => (s ? { ...s, unmatched: [] } : s));
+      setBulkFiles([]);
+      bulkQueue.reset();
+      unmatchedQueue.reset();
+    } else {
+      toast.error(`Some uploads failed. (Uploaded: ${succeeded}, Failed: ${failed})`);
+    }
+    qc.invalidateQueries({ queryKey: ["admin-gallery"] });
+    qc.invalidateQueries({ queryKey: ["gallery"] });
+    setUnmatchedUploading(false);
+  };
+
   return (
     <div>
+      <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5 mb-6">
+        <h3 className="font-semibold mb-1">Bulk Replace Missing Files</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Use this only for old missing photos. File names should match the old photo names.
+        </p>
+        <DropzoneUpload
+          files={bulkFiles}
+          onFilesChange={setBulkFiles}
+          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+          disabled={bulkRunning}
+          progress={bulkQueue.progress}
+          label="Drag and drop the matching old photos here, or click to browse"
+        />
+        {bulkFiles.length > 0 && (
+          <div className="mt-3 flex items-center gap-4 flex-wrap">
+            <Button onClick={runBulkReplace} disabled={bulkRunning} className="h-11">
+              {bulkRunning ? "Replacing…" : `Replace from ${bulkFiles.length} file(s)`}
+            </Button>
+            {bulkRunning && (
+              <span className="text-sm text-amber-700 font-semibold">
+                Processing {Math.min(bulkQueue.completedCount + bulkQueue.failedCount + 1, bulkQueue.total)} of {bulkQueue.total} files… please wait
+              </span>
+            )}
+          </div>
+        )}
+        {bulkSummary && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-white p-3 text-sm space-y-2">
+            <p>
+              Total selected: <strong>{bulkFiles.length}</strong> · Matched: <strong>{bulkSummary.matched}</strong> ·
+              {" "}Replaced: <strong className="text-emerald-600">{bulkSummary.uploaded}</strong> ·
+              {" "}Failed: <strong className="text-destructive">{bulkSummary.failed}</strong> ·
+              {" "}Unmatched: <strong>{bulkSummary.unmatched.length}</strong>
+            </p>
+            {bulkSummary.unmatched.length > 0 && (
+              <div>
+                <p className="text-muted-foreground">Unmatched files (no old gallery row found for this filename):</p>
+                <ul className="list-disc list-inside text-muted-foreground">
+                  {bulkSummary.unmatched.map((f) => (
+                    <li key={f.name}>{f.name}</li>
+                  ))}
+                </ul>
+                <Button
+                  onClick={uploadUnmatchedAsNew}
+                  disabled={unmatchedUploading}
+                  variant="outline"
+                  className="h-9 mt-2 text-sm"
+                >
+                  {unmatchedUploading ? "Uploading…" : "Upload unmatched files as new gallery items"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="rounded-xl border border-border bg-card p-5 mb-6">
         <h3 className="font-semibold mb-3">Upload photos/files</h3>
         <DropzoneUpload
@@ -706,8 +874,8 @@ function MemoriesTab() {
       toast.success("Memory deleted");
       qc.invalidateQueries({ queryKey: ["admin-memories"] });
       qc.invalidateQueries({ queryKey: ["memories"] });
-      if (res.fbStoragePath) {
-        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+      for (const path of res.fbStoragePaths) {
+        deleteFromFirebaseStorage(path).catch((err) =>
           console.error("[admin/memories] failed to delete storage object:", err),
         );
       }
@@ -718,34 +886,39 @@ function MemoriesTab() {
 
   const post = async () => {
     if (!body.trim() || !user) return;
-    let file = files[0];
-    if (file && file.size > MAX_ADMIN_UPLOAD_BYTES) {
-      toast.error("This file is too large. Please upload a smaller image or compressed version.");
+    const oversized = files.find((f) => f.size > MAX_ADMIN_UPLOAD_BYTES);
+    if (oversized) {
+      toast.error(`"${oversized.name}" is too large. Please upload a smaller image or compressed version.`);
       return;
     }
     setPosting(true);
-    const original = file;
-    if (original) uploadQueue.init([original]);
+    if (files.length > 0) uploadQueue.init(files);
     try {
-      let uploaded: { url: string; path: string } | null = null;
-      if (file) {
-        uploadQueue.setStatus(original!, "uploading", 0);
-        file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorageResumable(file, "memories", user.id, (pct) =>
-          uploadQueue.setPct(original!, pct),
-        );
-        uploadQueue.setStatus(original!, "completed", 100);
+      const { id: memoryId } = await postMemory({ data: { body } });
+      const uploadedImages: { url: string; storagePath: string; fileName: string; mimeType: string; fileSize: number }[] = [];
+      for (const original of files) {
+        try {
+          uploadQueue.setStatus(original, "uploading", 0);
+          const compressed = await compressImage(original);
+          const uploaded = await uploadToFirebaseStorageResumable(compressed, "memories", user.id, (pct) =>
+            uploadQueue.setPct(original, pct),
+          );
+          uploadedImages.push({
+            url: uploaded.url,
+            storagePath: uploaded.path,
+            fileName: compressed.name,
+            mimeType: compressed.type,
+            fileSize: compressed.size,
+          });
+          uploadQueue.setStatus(original, "completed", 100);
+        } catch (err) {
+          uploadQueue.setStatus(original, "error");
+          throw err;
+        }
       }
-      await postMemory({
-        data: {
-          body,
-          url: uploaded?.url,
-          storagePath: uploaded?.path,
-          fileName: file?.name,
-          mimeType: file?.type,
-          fileSize: file?.size,
-        },
-      });
+      if (uploadedImages.length > 0) {
+        await addMemoryImages({ data: { memoryId, images: uploadedImages } });
+      }
       setBody("");
       setFiles([]);
       uploadQueue.reset();
@@ -753,7 +926,6 @@ function MemoriesTab() {
       qc.invalidateQueries({ queryKey: ["admin-memories"] });
       qc.invalidateQueries({ queryKey: ["memories"] });
     } catch (err) {
-      if (original) uploadQueue.setStatus(original, "error");
       toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setPosting(false);
@@ -765,7 +937,7 @@ function MemoriesTab() {
       <div className="rounded-xl border border-border bg-card p-5 mb-6 space-y-3">
         <h3 className="font-semibold">Post a memory with photo</h3>
         <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="Share a memory…" />
-        <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple={false} disabled={posting} progress={uploadQueue.progress} />
+        <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple disabled={posting} progress={uploadQueue.progress} />
         <div className="flex items-center gap-4">
           <Button onClick={post} disabled={posting || !body.trim()} className="h-11">
             {posting ? "Posting…" : "Post memory"}
