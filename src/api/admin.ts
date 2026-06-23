@@ -610,3 +610,87 @@ export const adminDeleteMemory = createServerFn({ method: "POST" })
     );
     return { ok: true, fbStoragePaths };
   });
+
+export interface DuplicateMemoryGroup {
+  title: string | null;
+  body: string;
+  user_id: string;
+  full_name: string | null;
+  memories: { id: string; created_at: string; image_count: number }[];
+}
+
+/** Finds memories from the same author with identical title+body posted within 10 minutes of each other. */
+export const adminFindDuplicateMemories = createServerFn({ method: "GET" })
+  .middleware([requireAdmin])
+  .handler(async (): Promise<DuplicateMemoryGroup[]> => {
+    const res = await query<{
+      title: string | null;
+      body: string;
+      user_id: string;
+      full_name: string | null;
+      id: string;
+      created_at: string;
+      image_count: number;
+    }>(
+      `SELECT m.title, m.body, m.user_id, p.full_name, m.id, m.created_at,
+         (SELECT COUNT(*)::int FROM memory_images mi WHERE mi.memory_id = m.id) AS image_count
+       FROM memories m
+       LEFT JOIN profiles p ON p.id = m.user_id
+       ORDER BY m.user_id, m.title, m.body, m.created_at ASC`,
+    );
+
+    const groups: DuplicateMemoryGroup[] = [];
+    let current: DuplicateMemoryGroup | null = null;
+    let lastCreatedAt: number | null = null;
+    for (const row of res.rows) {
+      const sameKey =
+        current &&
+        current.user_id === row.user_id &&
+        current.title === row.title &&
+        current.body === row.body;
+      const withinWindow = sameKey && lastCreatedAt !== null && new Date(row.created_at).getTime() - lastCreatedAt <= 10 * 60 * 1000;
+      if (sameKey && withinWindow) {
+        current!.memories.push({ id: row.id, created_at: row.created_at, image_count: row.image_count });
+      } else {
+        current = {
+          title: row.title,
+          body: row.body,
+          user_id: row.user_id,
+          full_name: row.full_name,
+          memories: [{ id: row.id, created_at: row.created_at, image_count: row.image_count }],
+        };
+        groups.push(current);
+      }
+      lastCreatedAt = new Date(row.created_at).getTime();
+    }
+
+    return groups.filter((g) => g.memories.length > 1);
+  });
+
+/** Moves all memory_images from the duplicate memory ids into the keepId memory, then deletes the duplicates. */
+export const adminMergeMemories = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { keepId: string; duplicateIds: string[] }) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    if (!data.duplicateIds.length) return { ok: true };
+    await withTransaction(async (tx) => {
+      for (const dupId of data.duplicateIds) {
+        if (dupId === data.keepId) continue;
+        const legacy = await tx.query<{ image_url: string | null; fb_storage_path: string | null; file_name: string | null; file_size: number | null }>(
+          `SELECT image_url, fb_storage_path, file_name, file_size FROM memories WHERE id = $1`,
+          [dupId],
+        );
+        const dupRow = legacy.rows[0];
+        if (dupRow?.image_url) {
+          await tx.query(
+            `INSERT INTO memory_images (memory_id, image_url, fb_storage_path, file_name, file_size)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [data.keepId, dupRow.image_url, dupRow.fb_storage_path, dupRow.file_name, dupRow.file_size],
+          );
+        }
+        await tx.query(`UPDATE memory_images SET memory_id = $1 WHERE memory_id = $2`, [data.keepId, dupId]);
+        await tx.query(`DELETE FROM memories WHERE id = $1`, [dupId]);
+      }
+    });
+    return { ok: true };
+  });

@@ -12,7 +12,7 @@ import {
   adminListSupport, adminResolveSupport,
   adminListBlogs, adminDeleteBlog,
   adminListGallery, adminDeleteGalleryItem, type AdminGalleryRow,
-  adminListMemories, adminDeleteMemory,
+  adminListMemories, adminDeleteMemory, adminFindDuplicateMemories, adminMergeMemories,
 } from "@/api/admin";
 import { uploadGalleryItem, replaceGalleryItemFile } from "@/api/gallery";
 import { postMemory, addMemoryImages } from "@/api/memories";
@@ -945,6 +945,7 @@ function MemoriesTab() {
           {posting && files.length > 0 && <span className="text-sm text-amber-700 font-semibold">Uploading… please wait</span>}
         </div>
       </div>
+      <MergeDuplicateMemories />
       {data?.length === 0 && <p className="text-muted-foreground">No memories yet.</p>}
       <div className="space-y-3">
         {data?.map((m) => (
@@ -957,6 +958,66 @@ function MemoriesTab() {
             <Button onClick={() => del(m.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function MergeDuplicateMemories() {
+  const qc = useQueryClient();
+  const { data: groups, isLoading } = useQuery({
+    queryKey: ["admin-duplicate-memories"],
+    queryFn: () => adminFindDuplicateMemories(),
+  });
+  const [mergingKey, setMergingKey] = useState<string | null>(null);
+
+  const merge = async (keepId: string, duplicateIds: string[], key: string) => {
+    if (!confirm(`Merge ${duplicateIds.length} duplicate post(s) into one memory? Their photos will be combined and the duplicates deleted.`)) return;
+    setMergingKey(key);
+    try {
+      await adminMergeMemories({ data: { keepId, duplicateIds } });
+      toast.success("Duplicates merged");
+      qc.invalidateQueries({ queryKey: ["admin-duplicate-memories"] });
+      qc.invalidateQueries({ queryKey: ["admin-memories"] });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Merge failed");
+    } finally {
+      setMergingKey(null);
+    }
+  };
+
+  if (isLoading || !groups || groups.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 mb-6 space-y-3">
+      <h3 className="font-semibold">Merge duplicate memories</h3>
+      <p className="text-sm text-muted-foreground">
+        These posts have the same title, story, and author, created within minutes of each other — likely one memory split into several posts. Merging combines all their photos into the first post and removes the duplicates.
+      </p>
+      <div className="space-y-2">
+        {groups.map((g, gi) => {
+          const key = `${g.user_id}-${gi}`;
+          const [keep, ...dupes] = g.memories;
+          return (
+            <div key={key} className="rounded-lg border border-amber-200 bg-white p-3 flex flex-wrap justify-between gap-3 items-center">
+              <div>
+                <p className="font-semibold">{g.title || "Untitled"}</p>
+                <p className="text-sm text-muted-foreground line-clamp-1">{g.body}</p>
+                <p className="text-sm text-muted-foreground">
+                  By {g.full_name ?? "Unknown"} · {g.memories.length} posts, {g.memories.reduce((n, m) => n + m.image_count, 0)} total photos
+                </p>
+              </div>
+              <Button
+                onClick={() => merge(keep.id, dupes.map((d) => d.id), key)}
+                disabled={mergingKey === key}
+                className="h-10"
+              >
+                {mergingKey === key ? "Merging…" : "Merge into one post"}
+              </Button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
