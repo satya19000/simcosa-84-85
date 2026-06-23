@@ -2,6 +2,7 @@ import { useId, useRef, useState } from "react";
 import { UploadCloud, X, FileText, File as FileIcon, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fileKey, type FileUploadState } from "@/lib/upload-progress";
+import { toast } from "sonner";
 
 export interface DropzoneUploadProps {
   files: File[];
@@ -30,27 +31,87 @@ export function DropzoneUpload({
   multiple = true,
   disabled = false,
   className,
-  label = "Drag and drop photos/files here, or click to browse",
+  label = "Drag & drop, click to browse, or paste photos with Ctrl+V",
   progress,
 }: DropzoneUploadProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const addFiles = (incoming: FileList | null) => {
+  const dedupeKey = (f: File) => `${f.name}:${f.size}:${f.lastModified}`;
+
+  const addFiles = (incoming: FileList | File[] | null) => {
     if (!incoming || incoming.length === 0) return;
     const next = Array.from(incoming);
-    onFilesChange(multiple ? [...files, ...next] : next.slice(0, 1));
+    if (!multiple) {
+      onFilesChange(next.slice(0, 1));
+      return;
+    }
+    const existingKeys = new Set(files.map(dedupeKey));
+    const deduped: File[] = [];
+    for (const f of next) {
+      const k = dedupeKey(f);
+      if (existingKeys.has(k)) continue;
+      existingKeys.add(k);
+      deduped.push(f);
+    }
+    onFilesChange([...files, ...deduped]);
   };
 
   const removeAt = (idx: number) => {
     onFilesChange(files.filter((_, i) => i !== idx));
   };
 
+  const acceptsFile = (file: File) => {
+    if (!accept || accept === "*") return true;
+    const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
+    return accept.split(",").map((s) => s.trim()).some((pattern) => {
+      if (pattern.endsWith("/*")) return file.type.startsWith(pattern.slice(0, -1));
+      if (pattern.startsWith(".")) return ext === pattern.toLowerCase();
+      return file.type === pattern;
+    });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLLabelElement>) => {
+    if (disabled) return;
+    const clipboard = e.clipboardData;
+    if (!clipboard) return;
+
+    const pasted: File[] = [];
+    if (clipboard.files && clipboard.files.length > 0) {
+      pasted.push(...Array.from(clipboard.files));
+    } else if (clipboard.items && clipboard.items.length > 0) {
+      for (const item of Array.from(clipboard.items)) {
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file) pasted.push(file);
+        }
+      }
+    }
+
+    if (pasted.length === 0) {
+      toast.error("No image files found in clipboard");
+      return;
+    }
+    e.preventDefault();
+
+    const supported = pasted.filter((f) => acceptsFile(f));
+    const unsupported = pasted.length - supported.length;
+    if (supported.length === 0) {
+      toast.error("No image files found in clipboard");
+      return;
+    }
+    if (unsupported > 0) {
+      toast.error(`${unsupported} pasted file(s) skipped — unsupported format.`);
+    }
+    addFiles(supported);
+  };
+
   return (
     <div className={className}>
       <label
         htmlFor={inputId}
+        tabIndex={disabled ? -1 : 0}
         onDragOver={(e) => { e.preventDefault(); if (!disabled) setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => {
@@ -58,8 +119,9 @@ export function DropzoneUpload({
           setDragOver(false);
           if (!disabled) addFiles(e.dataTransfer.files);
         }}
+        onPaste={handlePaste}
         className={cn(
-          "flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-colors",
+          "flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400",
           dragOver ? "border-amber-400 bg-amber-100/60" : "border-amber-200 bg-amber-50/60 hover:border-amber-300 hover:bg-amber-50",
           disabled && "opacity-50 cursor-not-allowed pointer-events-none",
         )}
