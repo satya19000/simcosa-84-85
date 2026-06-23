@@ -15,7 +15,7 @@ import {
   adminListMemories, adminDeleteMemory,
 } from "@/api/admin";
 import { uploadGalleryItem, replaceGalleryItemFile } from "@/api/gallery";
-import { postMemory } from "@/api/memories";
+import { postMemory, addMemoryImages } from "@/api/memories";
 import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
 import { useUploadQueue } from "@/hooks/useUploadQueue";
@@ -874,8 +874,8 @@ function MemoriesTab() {
       toast.success("Memory deleted");
       qc.invalidateQueries({ queryKey: ["admin-memories"] });
       qc.invalidateQueries({ queryKey: ["memories"] });
-      if (res.fbStoragePath) {
-        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+      for (const path of res.fbStoragePaths) {
+        deleteFromFirebaseStorage(path).catch((err) =>
           console.error("[admin/memories] failed to delete storage object:", err),
         );
       }
@@ -886,34 +886,39 @@ function MemoriesTab() {
 
   const post = async () => {
     if (!body.trim() || !user) return;
-    let file = files[0];
-    if (file && file.size > MAX_ADMIN_UPLOAD_BYTES) {
-      toast.error("This file is too large. Please upload a smaller image or compressed version.");
+    const oversized = files.find((f) => f.size > MAX_ADMIN_UPLOAD_BYTES);
+    if (oversized) {
+      toast.error(`"${oversized.name}" is too large. Please upload a smaller image or compressed version.`);
       return;
     }
     setPosting(true);
-    const original = file;
-    if (original) uploadQueue.init([original]);
+    if (files.length > 0) uploadQueue.init(files);
     try {
-      let uploaded: { url: string; path: string } | null = null;
-      if (file) {
-        uploadQueue.setStatus(original!, "uploading", 0);
-        file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorageResumable(file, "memories", user.id, (pct) =>
-          uploadQueue.setPct(original!, pct),
-        );
-        uploadQueue.setStatus(original!, "completed", 100);
+      const { id: memoryId } = await postMemory({ data: { body } });
+      const uploadedImages: { url: string; storagePath: string; fileName: string; mimeType: string; fileSize: number }[] = [];
+      for (const original of files) {
+        try {
+          uploadQueue.setStatus(original, "uploading", 0);
+          const compressed = await compressImage(original);
+          const uploaded = await uploadToFirebaseStorageResumable(compressed, "memories", user.id, (pct) =>
+            uploadQueue.setPct(original, pct),
+          );
+          uploadedImages.push({
+            url: uploaded.url,
+            storagePath: uploaded.path,
+            fileName: compressed.name,
+            mimeType: compressed.type,
+            fileSize: compressed.size,
+          });
+          uploadQueue.setStatus(original, "completed", 100);
+        } catch (err) {
+          uploadQueue.setStatus(original, "error");
+          throw err;
+        }
       }
-      await postMemory({
-        data: {
-          body,
-          url: uploaded?.url,
-          storagePath: uploaded?.path,
-          fileName: file?.name,
-          mimeType: file?.type,
-          fileSize: file?.size,
-        },
-      });
+      if (uploadedImages.length > 0) {
+        await addMemoryImages({ data: { memoryId, images: uploadedImages } });
+      }
       setBody("");
       setFiles([]);
       uploadQueue.reset();
@@ -921,7 +926,6 @@ function MemoriesTab() {
       qc.invalidateQueries({ queryKey: ["admin-memories"] });
       qc.invalidateQueries({ queryKey: ["memories"] });
     } catch (err) {
-      if (original) uploadQueue.setStatus(original, "error");
       toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setPosting(false);
@@ -933,7 +937,7 @@ function MemoriesTab() {
       <div className="rounded-xl border border-border bg-card p-5 mb-6 space-y-3">
         <h3 className="font-semibold">Post a memory with photo</h3>
         <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="Share a memory…" />
-        <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple={false} disabled={posting} progress={uploadQueue.progress} />
+        <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple disabled={posting} progress={uploadQueue.progress} />
         <div className="flex items-center gap-4">
           <Button onClick={post} disabled={posting || !body.trim()} className="h-11">
             {posting ? "Posting…" : "Post memory"}

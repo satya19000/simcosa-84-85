@@ -594,12 +594,19 @@ export const adminListMemories = createServerFn({ method: "GET" })
 export const adminDeleteMemory = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data }): Promise<{ ok: true; fbStoragePath: string | null }> => {
+  .handler(async ({ data }): Promise<{ ok: true; fbStoragePaths: string[] }> => {
     const owned = await query<{ fb_storage_path: string | null }>(
       `SELECT fb_storage_path FROM memories WHERE id = $1`,
       [data.id],
     );
+    const images = await query<{ fb_storage_path: string | null }>(
+      `SELECT fb_storage_path FROM memory_images WHERE memory_id = $1`,
+      [data.id],
+    );
     const row = owned.rows[0];
     await query(`DELETE FROM memories WHERE id = $1`, [data.id]);
-    return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
+    const fbStoragePaths = [row?.fb_storage_path, ...images.rows.map((r) => r.fb_storage_path)].filter(
+      (p): p is string => !!p,
+    );
+    return { ok: true, fbStoragePaths };
   });
