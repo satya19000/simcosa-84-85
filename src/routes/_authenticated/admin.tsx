@@ -12,7 +12,7 @@ import {
   adminListSupport, adminResolveSupport,
   adminListBlogs, adminDeleteBlog,
   adminListGallery, adminDeleteGalleryItem, type AdminGalleryRow,
-  adminListMemories, adminDeleteMemory,
+  adminListMemories, adminDeleteMemory, adminFindDuplicateMemories, adminMergeMemories, adminEditMemoryAuthor,
 } from "@/api/admin";
 import { uploadGalleryItem, replaceGalleryItemFile } from "@/api/gallery";
 import { postMemory, addMemoryImages } from "@/api/memories";
@@ -864,8 +864,32 @@ function MemoriesTab() {
   const { data } = useQuery({ queryKey: ["admin-memories"], queryFn: () => adminListMemories() });
   const [files, setFiles] = useState<File[]>([]);
   const [body, setBody] = useState("");
+  const [authorName, setAuthorName] = useState("");
   const [posting, setPosting] = useState(false);
   const uploadQueue = useUploadQueue();
+  const [editingAuthorId, setEditingAuthorId] = useState<string | null>(null);
+  const [editingAuthorValue, setEditingAuthorValue] = useState("");
+  const [savingAuthor, setSavingAuthor] = useState(false);
+
+  const startEditAuthor = (id: string, current: string | null) => {
+    setEditingAuthorId(id);
+    setEditingAuthorValue(current ?? "");
+  };
+
+  const saveAuthor = async (id: string) => {
+    setSavingAuthor(true);
+    try {
+      await adminEditMemoryAuthor({ data: { id, authorName: editingAuthorValue || undefined } });
+      toast.success("Author name updated");
+      setEditingAuthorId(null);
+      qc.invalidateQueries({ queryKey: ["admin-memories"] });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setSavingAuthor(false);
+    }
+  };
 
   const del = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
@@ -894,7 +918,7 @@ function MemoriesTab() {
     setPosting(true);
     if (files.length > 0) uploadQueue.init(files);
     try {
-      const { id: memoryId } = await postMemory({ data: { body } });
+      const { id: memoryId } = await postMemory({ data: { body, authorName: authorName || undefined } });
       const uploadedImages: { url: string; storagePath: string; fileName: string; mimeType: string; fileSize: number }[] = [];
       for (const original of files) {
         try {
@@ -920,6 +944,7 @@ function MemoriesTab() {
         await addMemoryImages({ data: { memoryId, images: uploadedImages } });
       }
       setBody("");
+      setAuthorName("");
       setFiles([]);
       uploadQueue.reset();
       toast.success("Upload completed successfully. Memory posted.");
@@ -937,6 +962,10 @@ function MemoriesTab() {
       <div className="rounded-xl border border-border bg-card p-5 mb-6 space-y-3">
         <h3 className="font-semibold">Post a memory with photo</h3>
         <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="Share a memory…" />
+        <div>
+          <Label>Posted on behalf of / Batchmate name (optional)</Label>
+          <Input value={authorName} onChange={(e) => setAuthorName(e.target.value)} placeholder="e.g. Dr. Srilatha" className="h-11" />
+        </div>
         <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple disabled={posting} progress={uploadQueue.progress} />
         <div className="flex items-center gap-4">
           <Button onClick={post} disabled={posting || !body.trim()} className="h-11">
@@ -945,6 +974,7 @@ function MemoriesTab() {
           {posting && files.length > 0 && <span className="text-sm text-amber-700 font-semibold">Uploading… please wait</span>}
         </div>
       </div>
+      <MergeDuplicateMemories />
       {data?.length === 0 && <p className="text-muted-foreground">No memories yet.</p>}
       <div className="space-y-3">
         {data?.map((m) => (
@@ -952,11 +982,93 @@ function MemoriesTab() {
             <div>
               <p className="font-semibold">{m.title || "Untitled"}</p>
               <p className="text-sm text-muted-foreground line-clamp-1">{m.body}</p>
-              <p className="text-sm text-muted-foreground">By {m.profiles?.full_name ?? "Unknown"} · {format(new Date(m.created_at), "PPP")}</p>
+              <p className="text-sm text-muted-foreground">
+                Shown as {m.display_name} · uploaded by {m.profiles?.full_name ?? "Unknown"} · {format(new Date(m.created_at), "PPP")}
+              </p>
+              {editingAuthorId === m.id ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Input
+                    value={editingAuthorValue}
+                    onChange={(e) => setEditingAuthorValue(e.target.value)}
+                    placeholder="Leave blank to show uploader's profile name"
+                    className="h-9 max-w-xs"
+                  />
+                  <Button onClick={() => saveAuthor(m.id)} disabled={savingAuthor} className="h-9">Save</Button>
+                  <Button onClick={() => setEditingAuthorId(null)} variant="outline" className="h-9">Cancel</Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startEditAuthor(m.id, m.author_name)}
+                  className="mt-1 text-xs font-medium text-amber-600 hover:text-amber-700"
+                >
+                  Edit author name
+                </button>
+              )}
             </div>
             <Button onClick={() => del(m.id)} variant="outline" className="h-10 text-destructive">Delete</Button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function MergeDuplicateMemories() {
+  const qc = useQueryClient();
+  const { data: groups, isLoading } = useQuery({
+    queryKey: ["admin-duplicate-memories"],
+    queryFn: () => adminFindDuplicateMemories(),
+  });
+  const [mergingKey, setMergingKey] = useState<string | null>(null);
+
+  const merge = async (keepId: string, duplicateIds: string[], key: string) => {
+    if (!confirm(`Merge ${duplicateIds.length} duplicate post(s) into one memory? Their photos will be combined and the duplicates deleted.`)) return;
+    setMergingKey(key);
+    try {
+      await adminMergeMemories({ data: { keepId, duplicateIds } });
+      toast.success("Duplicates merged");
+      qc.invalidateQueries({ queryKey: ["admin-duplicate-memories"] });
+      qc.invalidateQueries({ queryKey: ["admin-memories"] });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Merge failed");
+    } finally {
+      setMergingKey(null);
+    }
+  };
+
+  if (isLoading || !groups || groups.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 mb-6 space-y-3">
+      <h3 className="font-semibold">Merge duplicate memories</h3>
+      <p className="text-sm text-muted-foreground">
+        These posts have the same title, story, and author, created within minutes of each other — likely one memory split into several posts. Merging combines all their photos into the first post and removes the duplicates.
+      </p>
+      <div className="space-y-2">
+        {groups.map((g, gi) => {
+          const key = `${g.user_id}-${gi}`;
+          const [keep, ...dupes] = g.memories;
+          return (
+            <div key={key} className="rounded-lg border border-amber-200 bg-white p-3 flex flex-wrap justify-between gap-3 items-center">
+              <div>
+                <p className="font-semibold">{g.title || "Untitled"}</p>
+                <p className="text-sm text-muted-foreground line-clamp-1">{g.body}</p>
+                <p className="text-sm text-muted-foreground">
+                  By {g.full_name ?? "Unknown"} · {g.memories.length} posts, {g.memories.reduce((n, m) => n + m.image_count, 0)} total photos
+                </p>
+              </div>
+              <Button
+                onClick={() => merge(keep.id, dupes.map((d) => d.id), key)}
+                disabled={mergingKey === key}
+                className="h-10"
+              >
+                {mergingKey === key ? "Merging…" : "Merge into one post"}
+              </Button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

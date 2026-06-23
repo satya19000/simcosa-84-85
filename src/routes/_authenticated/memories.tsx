@@ -125,6 +125,7 @@ function Memories() {
   const [lightbox, setLightbox] = useState<{ memoryId: string; index: number } | null>(null);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [addingPhotosId, setAddingPhotosId] = useState<string | null>(null);
   const uploadQueue = useUploadQueue();
 
   const { data: memories } = useQuery({
@@ -139,6 +140,7 @@ function Memories() {
     const fd = new FormData(form);
     const title = String(fd.get("title") || "");
     const body = String(fd.get("body") || "");
+    const authorName = isAdmin ? String(fd.get("authorName") || "") : "";
 
     const err = validateFiles(photoFiles);
     if (err) {
@@ -148,7 +150,7 @@ function Memories() {
 
     setPosting(true);
     try {
-      const { id: memoryId } = await postMemory({ data: { title: title || undefined, body } });
+      const { id: memoryId } = await postMemory({ data: { title: title || undefined, body, authorName: authorName || undefined } });
       if (photoFiles.length > 0) {
         const uploaded = await uploadMemoryImages(photoFiles, user.id, uploadQueue);
         await addMemoryImages({ data: { memoryId, images: uploaded } });
@@ -214,7 +216,7 @@ function Memories() {
             <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center font-display font-bold text-amber-700">
               {user?.email?.charAt(0).toUpperCase() ?? "M"}
             </div>
-            <p className="font-semibold text-gray-700">Share a memory with your batchmates</p>
+            <p className="font-semibold text-gray-700">Add Memory</p>
           </div>
           <div className="space-y-3">
             <div>
@@ -222,11 +224,18 @@ function Memories() {
               <Input id="t" name="title" placeholder="Give your memory a title…" className="h-12 text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl" />
             </div>
             <div>
-              <Label htmlFor="b" className="font-semibold text-gray-700">Your memory *</Label>
+              <Label htmlFor="b" className="font-semibold text-gray-700">Memory / Story *</Label>
               <Textarea id="b" name="body" required rows={4} placeholder="Share a story, a moment, a person you miss from our batch days…" className="text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl resize-none" />
             </div>
+            {isAdmin && (
+              <div>
+                <Label htmlFor="an" className="font-semibold text-gray-700">Posted on behalf of / Batchmate name (optional)</Label>
+                <Input id="an" name="authorName" placeholder="e.g. Dr. Srilatha" className="h-12 text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl" />
+              </div>
+            )}
             <div>
-              <Label className="font-semibold text-gray-700">Photos (optional)</Label>
+              <Label className="font-semibold text-gray-700">Add photos (optional)</Label>
+              <p className="text-xs text-gray-400 mt-0.5 mb-1">You can select or drag multiple photos for the same memory.</p>
               <DropzoneUpload
                 files={photoFiles}
                 onFilesChange={setPhotoFiles}
@@ -241,7 +250,7 @@ function Memories() {
           <div className="mt-4 flex items-center justify-end gap-4">
             {posting && photoFiles.length > 0 && <span className="text-sm text-amber-700 font-semibold">Uploading… please wait</span>}
             <Button type="submit" disabled={posting} className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 px-8 rounded-xl">
-              <Send className="h-4 w-4 mr-2" /> {posting ? "Posting…" : "Share Memory"}
+              <Send className="h-4 w-4 mr-2" /> {posting ? "Posting…" : "Post Memory"}
             </Button>
           </div>
         </form>
@@ -268,7 +277,7 @@ function Memories() {
                       {initials}
                     </div>
                     <div className="flex-1">
-                      <p className="font-bold text-gray-900">{m.profiles?.full_name ?? "A Batchmate"}</p>
+                      <p className="font-bold text-gray-900">{m.display_name || "A Batchmate"}</p>
                       <p className="text-xs text-gray-400">{format(new Date(m.created_at), "PPP")}</p>
                     </div>
                     {canManage && (
@@ -306,6 +315,19 @@ function Memories() {
                         images={m.images}
                         onOpen={(idx) => setLightbox({ memoryId: m.id, index: idx })}
                       />
+                      {canManage && (
+                        addingPhotosId === m.id ? (
+                          <AddPhotosPanel memoryId={m.id} onDone={() => setAddingPhotosId(null)} />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setAddingPhotosId(m.id)}
+                            className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-amber-600 hover:text-amber-700"
+                          >
+                            <ImagePlus className="h-4 w-4" /> Add more photos
+                          </button>
+                        )
+                      )}
                     </>
                   )}
                 </div>
@@ -342,17 +364,61 @@ function Memories() {
   );
 }
 
+function AddPhotosPanel({ memoryId, onDone }: { memoryId: string; onDone: () => void }) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [files, setFiles] = useState<File[]>([]);
+  const [saving, setSaving] = useState(false);
+  const uploadQueue = useUploadQueue();
+
+  const save = async () => {
+    if (!user || files.length === 0) return;
+    const err = validateFiles(files);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    setSaving(true);
+    try {
+      const uploaded = await uploadMemoryImages(files, user.id, uploadQueue);
+      await addMemoryImages({ data: { memoryId, images: uploaded } });
+      setFiles([]);
+      uploadQueue.reset();
+      toast.success("Photos added");
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      onDone();
+    } catch (err2) {
+      toast.error(err2 instanceof Error ? err2.message : "Upload failed. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-2 bg-amber-50/50 rounded-xl p-3">
+      <DropzoneUpload files={files} onFilesChange={setFiles} accept="image/*" multiple disabled={saving} progress={uploadQueue.progress} />
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onDone} disabled={saving} className="h-9 rounded-xl">Cancel</Button>
+        <Button type="button" onClick={save} disabled={saving || files.length === 0} className="h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl">
+          {saving ? "Uploading…" : "Upload"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function EditMemoryPanel({
   memory,
   onDone,
 }: {
-  memory: { id: string; title: string | null; body: string; images: MemoryImage[]; user_id: string };
+  memory: { id: string; title: string | null; body: string; author_name: string | null; images: MemoryImage[]; user_id: string };
   onDone: () => void;
 }) {
   const { user, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [title, setTitle] = useState(memory.title ?? "");
   const [body, setBody] = useState(memory.body);
+  const [authorName, setAuthorName] = useState(memory.author_name ?? "");
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const uploadQueue = useUploadQueue();
@@ -370,7 +436,7 @@ function EditMemoryPanel({
     }
     setSaving(true);
     try {
-      await editMemory({ data: { id: memory.id, title: title || undefined, body } });
+      await editMemory({ data: { id: memory.id, title: title || undefined, body, authorName: authorName || undefined } });
       if (newFiles.length > 0) {
         const uploaded = await uploadMemoryImages(newFiles, user.id, uploadQueue);
         await addMemoryImages({ data: { memoryId: memory.id, images: uploaded } });
@@ -406,6 +472,15 @@ function EditMemoryPanel({
     <div className="space-y-3 bg-amber-50/50 rounded-xl p-4">
       <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (optional)" className="h-11 border-amber-200 rounded-xl" />
       <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className="border-amber-200 rounded-xl resize-none" />
+      <div>
+        <Label className="font-semibold text-gray-700">Author display name (optional)</Label>
+        <Input
+          value={authorName}
+          onChange={(e) => setAuthorName(e.target.value)}
+          placeholder="Leave blank to show your profile name"
+          className="h-11 mt-1 border-amber-200 rounded-xl"
+        />
+      </div>
 
       {canManageImages && memory.images.length > 0 && (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
