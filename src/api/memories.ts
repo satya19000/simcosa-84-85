@@ -27,6 +27,8 @@ export interface MemoryRow {
   title: string | null;
   body: string;
   image_url: string | null;
+  author_name: string | null;
+  display_name: string;
   created_at: string;
   profiles: { full_name: string } | null;
   memory_likes: { user_id: string }[];
@@ -41,6 +43,8 @@ export const listMemories = createServerFn({ method: "GET" })
       `SELECT
          m.id, m.user_id, m.title, m.body,
          CASE WHEN m.image_data IS NOT NULL THEN '/api/memories/image/' || m.id ELSE m.image_url END AS image_url,
+         m.author_name,
+         COALESCE(NULLIF(m.author_name, ''), p.full_name, 'Member') AS display_name,
          m.created_at,
          json_build_object('full_name', p.full_name) AS profiles,
          COALESCE((
@@ -83,6 +87,7 @@ export const listMemories = createServerFn({ method: "GET" })
 export interface PostMemoryInput {
   title?: string;
   body: string;
+  authorName?: string;
 }
 
 export const postMemory = createServerFn({ method: "POST" })
@@ -92,10 +97,12 @@ export const postMemory = createServerFn({ method: "POST" })
     const title = data.title ?? "";
     const body = data.body ?? "";
     if (!body.trim()) throw new Error("Memory body is required");
+    // Only admins may post on behalf of someone else; members always show their own name.
+    const authorName = context.isAdmin ? (data.authorName?.trim() || null) : null;
 
     const res = await query<{ id: string }>(
-      `INSERT INTO memories (user_id, title, body) VALUES ($1, $2, $3) RETURNING id`,
-      [context.userId, title || null, body],
+      `INSERT INTO memories (user_id, title, body, author_name) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [context.userId, title || null, body, authorName],
     );
     return { ok: true, id: res.rows[0].id };
   });
@@ -185,7 +192,7 @@ export const addComment = createServerFn({ method: "POST" })
 
 export const editMemory = createServerFn({ method: "POST" })
   .middleware([requireApproved])
-  .inputValidator((d: { id: string; title?: string; body: string }) => d)
+  .inputValidator((d: { id: string; title?: string; body: string; authorName?: string }) => d)
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     if (!data.body.trim()) throw new Error("Memory body is required");
     const owned = await query<{ user_id: string }>(`SELECT user_id FROM memories WHERE id = $1`, [data.id]);
@@ -193,7 +200,13 @@ export const editMemory = createServerFn({ method: "POST" })
     if (!row) throw new Error("Memory not found");
     if (row.user_id !== context.userId && !context.isAdmin) throw new Error("Forbidden");
 
-    await query(`UPDATE memories SET title = $1, body = $2 WHERE id = $3`, [data.title || null, data.body, data.id]);
+    // Owner or admin may set/clear the display author name; clearing falls back to the uploader's profile name.
+    const authorName = data.authorName?.trim() || null;
+
+    await query(
+      `UPDATE memories SET title = $1, body = $2, author_name = $3 WHERE id = $4`,
+      [data.title || null, data.body, authorName, data.id],
+    );
     return { ok: true };
   });
 

@@ -140,6 +140,7 @@ function Memories() {
     const fd = new FormData(form);
     const title = String(fd.get("title") || "");
     const body = String(fd.get("body") || "");
+    const authorName = isAdmin ? String(fd.get("authorName") || "") : "";
 
     const err = validateFiles(photoFiles);
     if (err) {
@@ -149,7 +150,7 @@ function Memories() {
 
     setPosting(true);
     try {
-      const { id: memoryId } = await postMemory({ data: { title: title || undefined, body } });
+      const { id: memoryId } = await postMemory({ data: { title: title || undefined, body, authorName: authorName || undefined } });
       if (photoFiles.length > 0) {
         const uploaded = await uploadMemoryImages(photoFiles, user.id, uploadQueue);
         await addMemoryImages({ data: { memoryId, images: uploaded } });
@@ -226,6 +227,12 @@ function Memories() {
               <Label htmlFor="b" className="font-semibold text-gray-700">Memory / Story *</Label>
               <Textarea id="b" name="body" required rows={4} placeholder="Share a story, a moment, a person you miss from our batch days…" className="text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl resize-none" />
             </div>
+            {isAdmin && (
+              <div>
+                <Label htmlFor="an" className="font-semibold text-gray-700">Posted on behalf of / Batchmate name (optional)</Label>
+                <Input id="an" name="authorName" placeholder="e.g. Dr. Srilatha" className="h-12 text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl" />
+              </div>
+            )}
             <div>
               <Label className="font-semibold text-gray-700">Add photos (optional)</Label>
               <p className="text-xs text-gray-400 mt-0.5 mb-1">You can select or drag multiple photos for the same memory.</p>
@@ -270,7 +277,7 @@ function Memories() {
                       {initials}
                     </div>
                     <div className="flex-1">
-                      <p className="font-bold text-gray-900">{m.profiles?.full_name ?? "A Batchmate"}</p>
+                      <p className="font-bold text-gray-900">{m.display_name || "A Batchmate"}</p>
                       <p className="text-xs text-gray-400">{format(new Date(m.created_at), "PPP")}</p>
                     </div>
                     {canManage && (
@@ -404,13 +411,14 @@ function EditMemoryPanel({
   memory,
   onDone,
 }: {
-  memory: { id: string; title: string | null; body: string; images: MemoryImage[]; user_id: string };
+  memory: { id: string; title: string | null; body: string; author_name: string | null; images: MemoryImage[]; user_id: string };
   onDone: () => void;
 }) {
   const { user, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [title, setTitle] = useState(memory.title ?? "");
   const [body, setBody] = useState(memory.body);
+  const [authorName, setAuthorName] = useState(memory.author_name ?? "");
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const uploadQueue = useUploadQueue();
@@ -428,7 +436,7 @@ function EditMemoryPanel({
     }
     setSaving(true);
     try {
-      await editMemory({ data: { id: memory.id, title: title || undefined, body } });
+      await editMemory({ data: { id: memory.id, title: title || undefined, body, authorName: authorName || undefined } });
       if (newFiles.length > 0) {
         const uploaded = await uploadMemoryImages(newFiles, user.id, uploadQueue);
         await addMemoryImages({ data: { memoryId: memory.id, images: uploaded } });
@@ -464,6 +472,15 @@ function EditMemoryPanel({
     <div className="space-y-3 bg-amber-50/50 rounded-xl p-4">
       <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (optional)" className="h-11 border-amber-200 rounded-xl" />
       <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className="border-amber-200 rounded-xl resize-none" />
+      <div>
+        <Label className="font-semibold text-gray-700">Author display name (optional)</Label>
+        <Input
+          value={authorName}
+          onChange={(e) => setAuthorName(e.target.value)}
+          placeholder="Leave blank to show your profile name"
+          className="h-11 mt-1 border-amber-200 rounded-xl"
+        />
+      </div>
 
       {canManageImages && memory.images.length > 0 && (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">

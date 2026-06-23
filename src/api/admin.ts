@@ -573,6 +573,8 @@ export interface AdminMemoryRow {
   id: string;
   title: string | null;
   body: string;
+  author_name: string | null;
+  display_name: string;
   created_at: string;
   user_id: string;
   profiles: { full_name: string | null } | null;
@@ -582,13 +584,23 @@ export const adminListMemories = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .handler(async (): Promise<AdminMemoryRow[]> => {
     const res = await query<AdminMemoryRow>(
-      `SELECT m.id, m.title, m.body, m.created_at, m.user_id,
+      `SELECT m.id, m.title, m.body, m.author_name,
+         COALESCE(NULLIF(m.author_name, ''), p.full_name, 'Member') AS display_name,
+         m.created_at, m.user_id,
          json_build_object('full_name', p.full_name) AS profiles
        FROM memories m
        LEFT JOIN profiles p ON p.id = m.user_id
        ORDER BY m.created_at DESC`,
     );
     return res.rows;
+  });
+
+export const adminEditMemoryAuthor = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string; authorName?: string }) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await query(`UPDATE memories SET author_name = $1 WHERE id = $2`, [data.authorName?.trim() || null, data.id]);
+    return { ok: true };
   });
 
 export const adminDeleteMemory = createServerFn({ method: "POST" })

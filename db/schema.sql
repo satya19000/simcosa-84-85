@@ -259,6 +259,9 @@ ALTER TABLE memories ADD COLUMN IF NOT EXISTS image_mime text;
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS fb_storage_path text;
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS file_name text;
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS file_size bigint;
+-- Optional display name override, e.g. an admin posting on behalf of a batchmate.
+-- Falls back to the uploader's profile full_name when null/empty.
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS author_name text;
 
 -- Child table: supports many images per memory post. Legacy single-image
 -- memories (image_url/fb_storage_path on memories itself) keep working;
