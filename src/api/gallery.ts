@@ -35,6 +35,7 @@ export interface GalleryRow {
   file_available: boolean;
   uploaded_by: string | null;
   created_at: string;
+  sort_order: number;
   gallery_likes: { user_id: string }[];
   gallery_comments: GalleryComment[];
 }
@@ -58,7 +59,7 @@ export const listGallery = createServerFn({ method: "GET" })
       `SELECT g.id, g.title, g.caption, g.location, g.taken_date, g.people, g.media_type, g.storage_path,
          ${FILE_URL_SQL} AS file_url,
          (${FILE_URL_SQL}) IS NOT NULL AS file_available,
-         g.uploaded_by, g.created_at,
+         g.uploaded_by, g.created_at, g.sort_order,
          COALESCE((
            SELECT json_agg(json_build_object('user_id', gl.user_id))
            FROM gallery_likes gl WHERE gl.gallery_item_id = g.id
@@ -73,7 +74,7 @@ export const listGallery = createServerFn({ method: "GET" })
            LEFT JOIN profiles cp ON cp.id = gc.user_id
            WHERE gc.gallery_item_id = g.id AND gc.deleted_at IS NULL
          ), '[]'::json) AS gallery_comments
-       FROM gallery_items g WHERE g.deleted_at IS NULL ORDER BY g.created_at DESC`,
+       FROM gallery_items g WHERE g.deleted_at IS NULL ORDER BY g.sort_order ASC, g.created_at DESC`,
     );
     return res.rows;
   });

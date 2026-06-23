@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
-  listMemories, postMemory, addMemoryImages, deleteMemoryImage, editMemory,
+  listMemories, postMemory, addMemoryImages, deleteMemoryImage, editMemory, reorderMemoryImages,
   toggleLike as toggleLikeFn, addComment, deleteMemory, deleteComment,
   type MemoryImage,
 } from "@/api/memories";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Heart, MessageCircle, BookOpen, Send, Trash2, Pencil, ImagePlus, X } from "lucide-react";
+import { Heart, MessageCircle, BookOpen, Send, Trash2, Pencil, ImagePlus, X, ArrowLeft, ArrowRight, ArrowUpDown } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
@@ -78,9 +78,19 @@ async function uploadMemoryImages(
   return uploaded;
 }
 
-function MemoryImageGrid({ images, onOpen }: { images: MemoryImage[]; onOpen: (idx: number) => void }) {
+function MemoryImageGrid({
+  images,
+  onOpen,
+  reordering,
+  onMove,
+}: {
+  images: MemoryImage[];
+  onOpen: (idx: number) => void;
+  reordering?: boolean;
+  onMove?: (idx: number, dir: -1 | 1) => void;
+}) {
   if (images.length === 0) return null;
-  if (images.length === 1) {
+  if (images.length === 1 && !reordering) {
     return (
       <button
         type="button"
@@ -100,19 +110,43 @@ function MemoryImageGrid({ images, onOpen }: { images: MemoryImage[]; onOpen: (i
   return (
     <div className={cn("mt-4 grid gap-1.5", gridCols)}>
       {images.map((img, i) => (
-        <button
-          key={img.id}
-          type="button"
-          onClick={() => onOpen(i)}
-          className="overflow-hidden rounded-lg border border-amber-100 cursor-zoom-in aspect-square"
-        >
-          <img
-            src={img.image_url}
-            alt="Memory photo"
-            loading="lazy"
-            className="h-full w-full object-cover hover:scale-[1.05] transition-transform duration-300"
-          />
-        </button>
+        <div key={img.id} className="relative overflow-hidden rounded-lg border border-amber-100 aspect-square">
+          <button
+            type="button"
+            onClick={() => !reordering && onOpen(i)}
+            className={cn("h-full w-full block", !reordering && "cursor-zoom-in")}
+            disabled={reordering}
+          >
+            <img
+              src={img.image_url}
+              alt="Memory photo"
+              loading="lazy"
+              className="h-full w-full object-cover hover:scale-[1.05] transition-transform duration-300"
+            />
+          </button>
+          {reordering && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                aria-label="Move photo earlier"
+                disabled={i === 0}
+                onClick={() => onMove?.(i, -1)}
+                className="h-8 w-8 rounded-full bg-white/90 text-gray-800 flex items-center justify-center disabled:opacity-30 hover:bg-white"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Move photo later"
+                disabled={i === images.length - 1}
+                onClick={() => onMove?.(i, 1)}
+                className="h-8 w-8 rounded-full bg-white/90 text-gray-800 flex items-center justify-center disabled:opacity-30 hover:bg-white"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -126,6 +160,7 @@ function Memories() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addingPhotosId, setAddingPhotosId] = useState<string | null>(null);
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
   const uploadQueue = useUploadQueue();
 
   const { data: memories } = useQuery({
@@ -189,6 +224,21 @@ function Memories() {
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
+    }
+  };
+
+  const handleMoveImage = async (memoryId: string, images: MemoryImage[], idx: number, dir: -1 | 1) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= images.length) return;
+    const reordered = [...images];
+    [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+    const orderedImageIds = reordered.map((img) => img.id);
+    try {
+      await reorderMemoryImages({ data: { memoryId, orderedImageIds } });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      toast.success("Photo order updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to update order");
     }
   };
 
@@ -314,19 +364,33 @@ function Memories() {
                       <MemoryImageGrid
                         images={m.images}
                         onOpen={(idx) => setLightbox({ memoryId: m.id, index: idx })}
+                        reordering={reorderingId === m.id}
+                        onMove={(idx, dir) => handleMoveImage(m.id, m.images, idx, dir)}
                       />
                       {canManage && (
-                        addingPhotosId === m.id ? (
-                          <AddPhotosPanel memoryId={m.id} onDone={() => setAddingPhotosId(null)} />
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setAddingPhotosId(m.id)}
-                            className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-amber-600 hover:text-amber-700"
-                          >
-                            <ImagePlus className="h-4 w-4" /> Add more photos
-                          </button>
-                        )
+                        <div className="mt-3 flex flex-wrap items-center gap-4">
+                          {addingPhotosId !== m.id && (
+                            <button
+                              type="button"
+                              onClick={() => setAddingPhotosId(m.id)}
+                              className="flex items-center gap-1.5 text-sm font-semibold text-amber-600 hover:text-amber-700"
+                            >
+                              <ImagePlus className="h-4 w-4" /> Add more photos
+                            </button>
+                          )}
+                          {m.images.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setReorderingId(reorderingId === m.id ? null : m.id)}
+                              className="flex items-center gap-1.5 text-sm font-semibold text-amber-600 hover:text-amber-700"
+                            >
+                              <ArrowUpDown className="h-4 w-4" /> {reorderingId === m.id ? "Done reordering" : "Reorder photos"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {canManage && addingPhotosId === m.id && (
+                        <AddPhotosPanel memoryId={m.id} onDone={() => setAddingPhotosId(null)} />
                       )}
                     </>
                   )}

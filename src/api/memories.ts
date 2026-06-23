@@ -160,6 +160,28 @@ export const deleteMemoryImage = createServerFn({ method: "POST" })
     return { ok: true, fbStoragePath: row.fb_storage_path };
   });
 
+/** Owner or admin reorders all photos of one memory by supplying the full, newly-ordered list of image ids. */
+export const reorderMemoryImages = createServerFn({ method: "POST" })
+  .middleware([requireApproved])
+  .inputValidator((d: { memoryId: string; orderedImageIds: string[] }) => d)
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const owned = await query<{ user_id: string }>(`SELECT user_id FROM memories WHERE id = $1`, [data.memoryId]);
+    const row = owned.rows[0];
+    if (!row) throw new Error("Memory not found");
+    if (row.user_id !== context.userId && !context.isAdmin) throw new Error("Forbidden");
+
+    const existing = await query<{ id: string }>(`SELECT id FROM memory_images WHERE memory_id = $1`, [data.memoryId]);
+    const existingIds = new Set(existing.rows.map((r) => r.id));
+    if (data.orderedImageIds.length !== existingIds.size || !data.orderedImageIds.every((id) => existingIds.has(id))) {
+      throw new Error("Photo list is out of date. Please refresh and try again.");
+    }
+
+    await Promise.all(
+      data.orderedImageIds.map((id, i) => query(`UPDATE memory_images SET sort_order = $1 WHERE id = $2`, [i, id])),
+    );
+    return { ok: true };
+  });
+
 export const toggleLike = createServerFn({ method: "POST" })
   .middleware([requireApproved])
   .inputValidator((d: { memoryId: string; liked: boolean }) => d)

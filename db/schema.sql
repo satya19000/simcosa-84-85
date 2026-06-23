@@ -165,6 +165,9 @@ ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS location text;
 ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS taken_date date;
 ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS people text;
+-- Manual photo ordering (admin drag/reorder); lower sorts first.
+ALTER TABLE gallery_items ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_gallery_items_sort_order ON gallery_items(sort_order, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS gallery_likes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -277,6 +280,7 @@ CREATE TABLE IF NOT EXISTS memory_images (
   sort_order integer DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_memory_images_memory_sort_order ON memory_images(memory_id, sort_order, created_at);
 
 CREATE TABLE IF NOT EXISTS memory_likes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

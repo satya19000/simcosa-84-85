@@ -523,6 +523,7 @@ export interface AdminGalleryRow {
   fb_storage_path: string | null;
   file_available: boolean;
   created_at: string;
+  sort_order: number;
   uploaded_by: string | null;
   profiles: { full_name: string | null } | null;
 }
@@ -545,12 +546,12 @@ export const adminListGallery = createServerFn({ method: "GET" })
          ${ADMIN_FILE_URL_SQL} AS file_url,
          g.fb_storage_path,
          (${ADMIN_FILE_URL_SQL}) IS NOT NULL AS file_available,
-         g.created_at, g.uploaded_by,
+         g.created_at, g.sort_order, g.uploaded_by,
          json_build_object('full_name', p.full_name) AS profiles
        FROM gallery_items g
        LEFT JOIN profiles p ON p.id = g.uploaded_by
        WHERE g.deleted_at IS NULL
-       ORDER BY g.created_at DESC`,
+       ORDER BY g.sort_order ASC, g.created_at DESC`,
     );
     return res.rows;
   });
@@ -566,6 +567,23 @@ export const adminDeleteGalleryItem = createServerFn({ method: "POST" })
     const row = owned.rows[0];
     await query(`DELETE FROM gallery_items WHERE id = $1`, [data.id]);
     return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
+  });
+
+/** Admin reorders all (non-deleted) public gallery items by supplying the full, newly-ordered list of item ids. */
+export const adminReorderGallery = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { orderedItemIds: string[] }) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const existing = await query<{ id: string }>(`SELECT id FROM gallery_items WHERE deleted_at IS NULL`);
+    const existingIds = new Set(existing.rows.map((r) => r.id));
+    if (data.orderedItemIds.length !== existingIds.size || !data.orderedItemIds.every((id) => existingIds.has(id))) {
+      throw new Error("Gallery list is out of date. Please refresh and try again.");
+    }
+
+    await Promise.all(
+      data.orderedItemIds.map((id, i) => query(`UPDATE gallery_items SET sort_order = $1 WHERE id = $2`, [i, id])),
+    );
+    return { ok: true };
   });
 
 // ---- Memories (moderation) ----
