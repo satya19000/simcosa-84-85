@@ -18,6 +18,7 @@ export interface MemoryImage {
   image_url: string;
   fb_storage_path: string | null;
   file_name: string | null;
+  file_size: number | null;
   sort_order: number;
 }
 
@@ -64,7 +65,7 @@ export const listMemories = createServerFn({ method: "GET" })
          COALESCE((
            SELECT json_agg(json_build_object(
              'id', mi.id, 'image_url', mi.image_url, 'fb_storage_path', mi.fb_storage_path,
-             'file_name', mi.file_name, 'sort_order', mi.sort_order
+             'file_name', mi.file_name, 'file_size', mi.file_size, 'sort_order', mi.sort_order
            ) ORDER BY mi.sort_order ASC, mi.created_at ASC)
            FROM memory_images mi WHERE mi.memory_id = m.id
          ), '[]'::json) AS images
@@ -77,7 +78,7 @@ export const listMemories = createServerFn({ method: "GET" })
       if (row.image_url) {
         return {
           ...row,
-          images: [{ id: row.id, image_url: row.image_url, fb_storage_path: null, file_name: null, sort_order: 0 }],
+          images: [{ id: row.id, image_url: row.image_url, fb_storage_path: null, file_name: null, file_size: null, sort_order: 0 }],
         };
       }
       return row;
@@ -126,17 +127,32 @@ export const addMemoryImages = createServerFn({ method: "POST" })
 
     if (!data.images || data.images.length === 0) return { ok: true };
 
-    for (const [i, img] of data.images.entries()) {
+    // Fetch the current max sort_order so new images append after existing ones.
+    const maxOrdRes = await query<{ max: number | null }>(
+      `SELECT MAX(sort_order) AS max FROM memory_images WHERE memory_id = $1`,
+      [data.memoryId],
+    );
+    let nextOrder = (maxOrdRes.rows[0]?.max ?? -1) + 1;
+
+    for (const img of data.images) {
       if (!img.mimeType || !ALLOWED_MEMORY_IMAGE_TYPES.has(img.mimeType)) {
         throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
       }
       if ((img.fileSize ?? 0) > MAX_MEMORY_IMAGE_BYTES) {
         throw new Error("This file is too large. Please upload a smaller image or compressed version.");
       }
+      // Server-side duplicate guard: skip if same memory already has same file_name + file_size.
+      if (img.fileName && img.fileSize) {
+        const dup = await query<{ id: string }>(
+          `SELECT id FROM memory_images WHERE memory_id = $1 AND file_name = $2 AND file_size = $3 LIMIT 1`,
+          [data.memoryId, img.fileName, img.fileSize],
+        );
+        if (dup.rows.length > 0) continue;
+      }
       await query(
         `INSERT INTO memory_images (memory_id, image_url, fb_storage_path, file_name, mime_type, file_size, sort_order)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [data.memoryId, img.url, img.storagePath || null, img.fileName || null, img.mimeType || null, img.fileSize ?? null, i],
+        [data.memoryId, img.url, img.storagePath || null, img.fileName || null, img.mimeType || null, img.fileSize ?? null, nextOrder++],
       );
     }
     return { ok: true };

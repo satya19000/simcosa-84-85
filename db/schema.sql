@@ -281,6 +281,14 @@ CREATE TABLE IF NOT EXISTS memory_images (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_memory_images_memory_sort_order ON memory_images(memory_id, sort_order, created_at);
+-- Unique guard: skip gracefully if existing duplicate rows prevent index creation.
+DO $$ BEGIN
+  CREATE UNIQUE INDEX idx_memory_images_no_duplicate_file
+  ON memory_images(memory_id, file_name, file_size)
+  WHERE file_name IS NOT NULL AND file_size IS NOT NULL;
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'idx_memory_images_no_duplicate_file skipped (may already exist or duplicates present).';
+END $$;
 
 CREATE TABLE IF NOT EXISTS memory_likes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
