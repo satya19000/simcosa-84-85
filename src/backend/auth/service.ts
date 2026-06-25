@@ -118,7 +118,15 @@ export async function getProfile(userId: string): Promise<ProfileRow | null> {
 
 export async function isAdmin(userId: string): Promise<boolean> {
   const res = await query(
-    `SELECT 1 FROM user_roles WHERE user_id = $1 AND role = 'admin' LIMIT 1`,
+    `SELECT 1 FROM user_roles WHERE user_id = $1 AND role IN ('admin', 'owner') LIMIT 1`,
+    [userId],
+  );
+  return res.rowCount! > 0;
+}
+
+export async function isOwner(userId: string): Promise<boolean> {
+  const res = await query(
+    `SELECT 1 FROM user_roles WHERE user_id = $1 AND role = 'owner' LIMIT 1`,
     [userId],
   );
   return res.rowCount! > 0;

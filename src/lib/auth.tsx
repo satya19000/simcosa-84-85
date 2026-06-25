@@ -59,6 +59,7 @@ interface AuthCtx {
   user: AuthUser | null;
   profile: ProfileRow | null;
   isAdmin: boolean;
+  isOwner: boolean;
   isApproved: boolean;
   loading: boolean;
   refresh: () => Promise<AuthResponse | null>;
@@ -90,18 +91,21 @@ interface AuthResponse {
   user?: AuthUser;
   profile?: ProfileRow | null;
   isAdmin?: boolean;
+  isOwner?: boolean;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const clearState = () => {
     setUser(null);
     setProfile(null);
     setIsAdmin(false);
+    setIsOwner(false);
   };
 
   const load = async (): Promise<AuthResponse | null> => {
@@ -112,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.user);
         setProfile(data.profile ?? null);
         setIsAdmin(!!data.isAdmin);
+        setIsOwner(!!data.isOwner);
       } else {
         clearState();
       }
@@ -243,6 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         isAdmin,
+        isOwner,
         isApproved: profile?.approval_status === "approved",
         loading,
         refresh,
