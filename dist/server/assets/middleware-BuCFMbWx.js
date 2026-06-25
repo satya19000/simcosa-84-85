@@ -1,17 +1,7 @@
-import { createMiddleware } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
-import { parseCookies } from "./cookies";
-import { getSession, SESSION_COOKIE } from "./session";
-import { getProfile, isAdmin, isOwner, type ProfileRow } from "./service";
-
-export interface AuthContext {
-  userId: string;
-  profile: ProfileRow | null;
-  isAdmin: boolean;
-  isOwner: boolean;
-}
-
-async function resolveAuth(): Promise<AuthContext> {
+import { p as parseCookies, g as getSession, S as SESSION_COOKIE, a as getProfile, i as isAdmin, b as isOwner } from "../server.js";
+import { c as createMiddleware } from "./createMiddleware-BvN2ghIY.js";
+import { a as getRequest } from "./server-B6ODWh69.js";
+async function resolveAuth() {
   const request = getRequest();
   const cookies = parseCookies(request?.headers.get("cookie"));
   const session = await getSession(cookies[SESSION_COOKIE]);
@@ -21,48 +11,46 @@ async function resolveAuth(): Promise<AuthContext> {
   const [profile, admin, owner] = await Promise.all([
     getProfile(session.userId),
     isAdmin(session.userId),
-    isOwner(session.userId),
+    isOwner(session.userId)
   ]);
   return { userId: session.userId, profile, isAdmin: admin, isOwner: owner };
 }
-
-// Requires a logged-in user. Injects { userId, profile, isAdmin, isOwner } into context.
-export const requireAuth = createMiddleware({ type: "function" }).server(
+const requireAuth = createMiddleware({ type: "function" }).server(
   async ({ next }) => {
     const auth = await resolveAuth();
     return next({ context: auth });
-  },
+  }
 );
-
-// Requires an admin user (includes owners).
-export const requireAdmin = createMiddleware({ type: "function" }).server(
+const requireAdmin = createMiddleware({ type: "function" }).server(
   async ({ next }) => {
     const auth = await resolveAuth();
     if (!auth.isAdmin) {
       throw new Error("Forbidden: admin only");
     }
     return next({ context: auth });
-  },
+  }
 );
-
-// Requires the owner role. Admins without owner role are rejected.
-export const requireOwner = createMiddleware({ type: "function" }).server(
+const requireOwner = createMiddleware({ type: "function" }).server(
   async ({ next }) => {
     const auth = await resolveAuth();
     if (!auth.isOwner) {
       throw new Error("Forbidden: owner only");
     }
     return next({ context: auth });
-  },
+  }
 );
-
-// Requires a logged-in, admin-approved member (admins always pass).
-export const requireApproved = createMiddleware({ type: "function" }).server(
+const requireApproved = createMiddleware({ type: "function" }).server(
   async ({ next }) => {
     const auth = await resolveAuth();
     if (!auth.isAdmin && auth.profile?.approval_status !== "approved") {
       throw new Error("Forbidden: account pending approval");
     }
     return next({ context: auth });
-  },
+  }
 );
+export {
+  requireAuth as a,
+  requireAdmin as b,
+  requireOwner as c,
+  requireApproved as r
+};

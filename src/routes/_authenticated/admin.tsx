@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminGetMediaStats, adminListMedia, adminDeleteMediaItem } from "@/api/media";
+import { ownerExportMembers, ownerExportMediaList, ownerExportFullBackup } from "@/api/backup";
 import { formatFileSize } from "@/lib/image-compress";
 import {
   adminListMembers,
@@ -41,7 +42,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
 });
 
 function Admin() {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, isAdmin, isOwner, loading } = useAuth();
   if (loading) return <div className="px-4 py-20 text-center">Loading…</div>;
   if (!user) {
     if (typeof window !== "undefined") window.location.replace("/auth");
@@ -71,6 +72,7 @@ function Admin() {
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
           <TabsTrigger value="support">Support</TabsTrigger>
           <TabsTrigger value="media">Media</TabsTrigger>
+          {isOwner && <TabsTrigger value="backup">Backup</TabsTrigger>}
         </TabsList>
         <TabsContent value="pending" className="mt-6"><PendingMembersTab /></TabsContent>
         <TabsContent value="approved" className="mt-6"><ApprovedMembersTab /></TabsContent>
@@ -85,6 +87,7 @@ function Admin() {
         <TabsContent value="expenses" className="mt-6"><ExpensesTab /></TabsContent>
         <TabsContent value="support" className="mt-6"><SupportTab /></TabsContent>
         <TabsContent value="media" className="mt-6"><MediaTab /></TabsContent>
+        {isOwner && <TabsContent value="backup" className="mt-6"><BackupTab /></TabsContent>}
       </Tabs>
     </div>
   );
@@ -1376,6 +1379,132 @@ function ExpensesTab() {
             <p className="font-display text-lg text-destructive">₹{Number(e.amount).toLocaleString("en-IN")}</p>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function downloadJson(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadCsv(rows: Record<string, unknown>[], filename: string) {
+  if (rows.length === 0) return;
+  const keys = Object.keys(rows[0]);
+  const escape = (v: unknown) => {
+    const s = v == null ? "" : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  };
+  const csv = [keys.join(","), ...rows.map((r) => keys.map((k) => escape(r[k])).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function OwnerOnlyBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-xs font-semibold text-amber-800">
+      Owner Only
+    </span>
+  );
+}
+
+function BackupTab() {
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [loadingMedia, setLoadingMedia] = useState(false);
+  const [loadingFull, setLoadingFull] = useState(false);
+
+  const exportMembers = async () => {
+    setLoadingMembers(true);
+    try {
+      const rows = await ownerExportMembers();
+      downloadCsv(rows as Record<string, unknown>[], `simcosa-members-${new Date().toISOString().slice(0, 10)}.csv`);
+      toast.success("Members CSV downloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const exportMedia = async () => {
+    setLoadingMedia(true);
+    try {
+      const rows = await ownerExportMediaList();
+      downloadCsv(rows as Record<string, unknown>[], `simcosa-media-${new Date().toISOString().slice(0, 10)}.csv`);
+      toast.success("Media list CSV downloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setLoadingMedia(false);
+    }
+  };
+
+  const exportFull = async () => {
+    setLoadingFull(true);
+    try {
+      const data = await ownerExportFullBackup();
+      downloadJson(data, `simcosa-full-backup-${new Date().toISOString().slice(0, 10)}.json`);
+      toast.success("Full backup downloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setLoadingFull(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+        <strong>Warning:</strong> This backup may contain member personal information. Keep it safely and do not share it publicly.
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">Members CSV Export</h3>
+          <OwnerOnlyBadge />
+        </div>
+        <p className="text-sm text-muted-foreground">Downloads all member profiles including names, emails, phones, locations, and approval status.</p>
+        <Button onClick={exportMembers} disabled={loadingMembers} className="h-10">
+          {loadingMembers ? "Exporting…" : "Download Members CSV"}
+        </Button>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">Media File List Export</h3>
+          <OwnerOnlyBadge />
+        </div>
+        <p className="text-sm text-muted-foreground">Downloads a CSV listing all media files (gallery, memory images, blog covers, event covers) with their storage paths and sizes.</p>
+        <Button onClick={exportMedia} disabled={loadingMedia} className="h-10">
+          {loadingMedia ? "Exporting…" : "Download Media List CSV"}
+        </Button>
+      </div>
+
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-destructive">Full Website Data Backup</h3>
+          <OwnerOnlyBadge />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Downloads a complete JSON backup of all website data: members, memories, gallery, blogs, events, announcements, donations, and expenses.
+          This file contains sensitive personal information — store it securely.
+        </p>
+        <Button onClick={exportFull} disabled={loadingFull} variant="destructive" className="h-10">
+          {loadingFull ? "Exporting…" : "Download Full Backup (JSON)"}
+        </Button>
       </div>
     </div>
   );
