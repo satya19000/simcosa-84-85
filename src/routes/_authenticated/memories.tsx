@@ -83,29 +83,55 @@ function MemoryImageGrid({
   onOpen,
   reordering,
   onMove,
+  memoryId,
+  onRemove,
 }: {
   images: MemoryImage[];
   onOpen: (idx: number) => void;
   reordering?: boolean;
   onMove?: (idx: number, dir: -1 | 1) => void;
+  memoryId?: string;
+  onRemove?: (imageId: string) => void;
 }) {
   if (images.length === 0) return null;
+
+  // An image whose id equals the memory's own id is a legacy single-image row
+  // mapped from `memories.image_url` — it has no real memory_images row, so
+  // deletion via deleteMemoryImage would fail.
+  const isLegacy = (img: MemoryImage) => !!(memoryId && img.id === memoryId);
+
   if (images.length === 1 && !reordering) {
+    const img = images[0];
+    const canDelete = onRemove && !isLegacy(img);
     return (
-      <button
-        type="button"
-        onClick={() => onOpen(0)}
-        className="mt-4 block w-full overflow-hidden rounded-xl border border-amber-100 cursor-zoom-in"
-      >
-        <img
-          src={images[0].image_url}
-          alt="Memory photo"
-          loading="lazy"
-          className="w-full max-h-96 object-cover hover:scale-[1.02] transition-transform duration-300"
-        />
-      </button>
+      <div className="mt-4 relative overflow-hidden rounded-xl border border-amber-100">
+        <button
+          type="button"
+          onClick={() => onOpen(0)}
+          className="block w-full cursor-zoom-in"
+        >
+          <img
+            src={img.image_url}
+            alt="Memory photo"
+            loading="lazy"
+            className="w-full max-h-96 object-cover hover:scale-[1.02] transition-transform duration-300"
+          />
+        </button>
+        {canDelete && (
+          <button
+            type="button"
+            aria-label="Remove photo"
+            title="Remove photo"
+            onClick={() => onRemove(img.id)}
+            className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/60 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     );
   }
+
   const gridCols = images.length === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3";
   return (
     <div className={cn("mt-4 grid gap-1.5", gridCols)}>
@@ -124,7 +150,7 @@ function MemoryImageGrid({
               className="h-full w-full object-cover hover:scale-[1.05] transition-transform duration-300"
             />
           </button>
-          {reordering && (
+          {reordering ? (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2">
               <button
                 type="button"
@@ -145,6 +171,18 @@ function MemoryImageGrid({
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
+          ) : (
+            onRemove && !isLegacy(img) && (
+              <button
+                type="button"
+                aria-label="Remove photo"
+                title="Remove photo"
+                onClick={() => onRemove(img.id)}
+                className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-black/60 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )
           )}
         </div>
       ))}
@@ -224,6 +262,22 @@ function Memories() {
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
+    }
+  };
+
+  const handleRemoveImage = async (imageId: string) => {
+    if (!confirm("Remove this photo from this memory?")) return;
+    try {
+      const res = await deleteMemoryImage({ data: { id: imageId } });
+      toast.success("Photo removed");
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      if (res.fbStoragePath) {
+        deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
+          console.error("[memories] failed to delete storage object:", err),
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to remove photo");
     }
   };
 
@@ -366,6 +420,8 @@ function Memories() {
                         onOpen={(idx) => setLightbox({ memoryId: m.id, index: idx })}
                         reordering={reorderingId === m.id}
                         onMove={(idx, dir) => handleMoveImage(m.id, m.images, idx, dir)}
+                        memoryId={m.id}
+                        onRemove={canManage ? handleRemoveImage : undefined}
                       />
                       {canManage && (
                         <div className="mt-3 flex flex-wrap items-center gap-4">
@@ -390,7 +446,7 @@ function Memories() {
                         </div>
                       )}
                       {canManage && addingPhotosId === m.id && (
-                        <AddPhotosPanel memoryId={m.id} onDone={() => setAddingPhotosId(null)} />
+                        <AddPhotosPanel memoryId={m.id} existingImages={m.images} onDone={() => setAddingPhotosId(null)} />
                       )}
                     </>
                   )}
@@ -428,7 +484,7 @@ function Memories() {
   );
 }
 
-function AddPhotosPanel({ memoryId, onDone }: { memoryId: string; onDone: () => void }) {
+function AddPhotosPanel({ memoryId, existingImages, onDone }: { memoryId: string; existingImages: MemoryImage[]; onDone: () => void }) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [files, setFiles] = useState<File[]>([]);
@@ -438,13 +494,31 @@ function AddPhotosPanel({ memoryId, onDone }: { memoryId: string; onDone: () => 
   const save = async () => {
     if (!user || files.length === 0) return;
     const err = validateFiles(files);
-    if (err) {
-      toast.error(err);
-      return;
+    if (err) { toast.error(err); return; }
+
+    // Dedup: skip files already attached to this memory (by file_name + file_size).
+    const existingKeys = new Set(
+      existingImages
+        .filter((img) => img.file_name != null && img.file_size != null)
+        .map((img) => `${img.file_name}:${img.file_size}`),
+    );
+    const unique: File[] = [];
+    let dupCount = 0;
+    for (const f of files) {
+      if (existingKeys.has(`${f.name}:${f.size}`)) {
+        dupCount++;
+      } else {
+        unique.push(f);
+      }
     }
+    if (dupCount > 0) {
+      toast.error(dupCount === 1 ? "This photo already exists in this memory" : `${dupCount} duplicate photos skipped`);
+    }
+    if (unique.length === 0) { onDone(); return; }
+
     setSaving(true);
     try {
-      const uploaded = await uploadMemoryImages(files, user.id, uploadQueue);
+      const uploaded = await uploadMemoryImages(unique, user.id, uploadQueue);
       await addMemoryImages({ data: { memoryId, images: uploaded } });
       setFiles([]);
       uploadQueue.reset();

@@ -509,7 +509,7 @@ async function serveEventCover(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-GIzTbeuV.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-UEbKG0hA.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
