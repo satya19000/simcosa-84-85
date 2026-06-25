@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminGetMediaStats, adminListMedia, adminDeleteMediaItem } from "@/api/media";
+import { formatFileSize } from "@/lib/image-compress";
 import {
   adminListMembers,
   adminApproveMember, adminRejectMember, adminMarkNeedsClarification, adminDeleteMember,
@@ -68,6 +70,7 @@ function Admin() {
           <TabsTrigger value="donations">Donations</TabsTrigger>
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
           <TabsTrigger value="support">Support</TabsTrigger>
+          <TabsTrigger value="media">Media</TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-6"><PendingMembersTab /></TabsContent>
         <TabsContent value="approved" className="mt-6"><ApprovedMembersTab /></TabsContent>
@@ -81,6 +84,7 @@ function Admin() {
         <TabsContent value="donations" className="mt-6"><DonationsTab /></TabsContent>
         <TabsContent value="expenses" className="mt-6"><ExpensesTab /></TabsContent>
         <TabsContent value="support" className="mt-6"><SupportTab /></TabsContent>
+        <TabsContent value="media" className="mt-6"><MediaTab /></TabsContent>
       </Tabs>
     </div>
   );
@@ -1373,6 +1377,173 @@ function ExpensesTab() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MediaTab() {
+  const qc = useQueryClient();
+  const [source, setSource] = useState<string>("all");
+  const [mediaType, setMediaType] = useState<string>("all");
+  const [sort, setSort] = useState<string>("newest");
+  const [page, setPage] = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const PAGE_SIZE = 50;
+
+  const { data: stats } = useQuery({
+    queryKey: ["admin-media-stats"],
+    queryFn: () => adminGetMediaStats(),
+  });
+
+  const { data: items, isFetching } = useQuery({
+    queryKey: ["admin-media", source, mediaType, sort, page],
+    queryFn: () =>
+      adminListMedia({
+        data: {
+          source: source === "all" ? "all" : (source as "gallery" | "memory_image" | "blog" | "event"),
+          media_type: mediaType === "all" ? undefined : mediaType,
+          sort: sort as "newest" | "oldest" | "largest" | "smallest",
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        },
+      }),
+  });
+
+  const del = async (id: string, itemSource: "gallery" | "memory_image" | "blog" | "event", fbPath: string | null) => {
+    if (!confirm("Delete this media item?")) return;
+    setDeletingId(id);
+    try {
+      await adminDeleteMediaItem({ data: { id, source: itemSource } });
+      if (fbPath) {
+        deleteFromFirebaseStorage(fbPath).catch((err) =>
+          console.error("[admin/media] failed to delete storage object:", err),
+        );
+      }
+      toast.success("Deleted");
+      qc.invalidateQueries({ queryKey: ["admin-media"] });
+      qc.invalidateQueries({ queryKey: ["admin-media-stats"] });
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            { label: "Total Files", value: stats.total_files },
+            { label: "Gallery", value: stats.gallery.count },
+            { label: "Photos (gallery)", value: stats.gallery.images },
+            { label: "Videos (gallery)", value: stats.gallery.videos },
+            { label: "Memories", value: stats.memory_images.count },
+            { label: "Total Storage", value: formatFileSize(stats.total_size) },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded-xl border border-border bg-card p-4 text-center">
+              <p className="text-2xl font-bold">{value}</p>
+              <p className="text-xs text-muted-foreground mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {stats && stats.gallery.missing > 0 && (
+        <p className="text-sm text-amber-700 font-medium">
+          ⚠ {stats.gallery.missing} gallery item(s) have no accessible file URL.
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-3">
+        <Select value={source} onValueChange={(v) => { setSource(v); setPage(0); }}>
+          <SelectTrigger className="h-10 w-40"><SelectValue placeholder="Source" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All sources</SelectItem>
+            <SelectItem value="gallery">Gallery</SelectItem>
+            <SelectItem value="memory_image">Memories</SelectItem>
+            <SelectItem value="blog">Blogs</SelectItem>
+            <SelectItem value="event">Events</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={mediaType} onValueChange={(v) => { setMediaType(v); setPage(0); }}>
+          <SelectTrigger className="h-10 w-36"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            <SelectItem value="image">Images</SelectItem>
+            <SelectItem value="video">Videos</SelectItem>
+            <SelectItem value="document">Documents</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sort} onValueChange={(v) => { setSort(v); setPage(0); }}>
+          <SelectTrigger className="h-10 w-40"><SelectValue placeholder="Sort" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="newest">Newest first</SelectItem>
+            <SelectItem value="oldest">Oldest first</SelectItem>
+            <SelectItem value="largest">Largest first</SelectItem>
+            <SelectItem value="smallest">Smallest first</SelectItem>
+          </SelectContent>
+        </Select>
+        {isFetching && <span className="self-center text-sm text-muted-foreground">Loading…</span>}
+      </div>
+
+      {items?.length === 0 && !isFetching && (
+        <p className="text-muted-foreground">No media found.</p>
+      )}
+
+      <div className="space-y-2">
+        {items?.map((item) => (
+          <div key={`${item.source}-${item.id}`} className="rounded-lg border border-border bg-card p-3 flex flex-wrap sm:flex-nowrap items-center gap-3">
+            <div className="shrink-0">
+              {item.file_url && item.media_type === "image" ? (
+                <img
+                  src={item.file_url}
+                  alt={item.file_name ?? ""}
+                  className="h-12 w-12 rounded-md object-cover"
+                  loading="lazy"
+                />
+              ) : item.media_type === "video" ? (
+                <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center text-xs text-muted-foreground">Video</div>
+              ) : (
+                <div className={`h-12 w-12 rounded-md flex items-center justify-center text-[10px] text-center px-1 ${item.file_available ? "bg-muted text-muted-foreground" : "bg-destructive/10 text-destructive"}`}>
+                  {item.file_available ? "Doc" : "Missing"}
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-sm font-medium">{item.title ?? item.file_name ?? "—"}</p>
+              <p className="text-xs text-muted-foreground">
+                <span className="capitalize">{item.source.replace("_", " ")}</span>
+                {" · "}{item.media_type}
+                {item.file_size ? ` · ${formatFileSize(item.file_size)}` : ""}
+                {item.uploaded_by_name ? ` · ${item.uploaded_by_name}` : ""}
+                {" · "}{format(new Date(item.created_at), "PP")}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="h-9 text-destructive shrink-0"
+              disabled={deletingId === item.id}
+              onClick={() => del(item.id, item.source, item.fb_storage_path)}
+            >
+              {deletingId === item.id ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      {(items?.length === PAGE_SIZE || page > 0) && (
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="h-10">
+            Previous
+          </Button>
+          <Button variant="outline" onClick={() => setPage((p) => p + 1)} disabled={(items?.length ?? 0) < PAGE_SIZE} className="h-10">
+            Next
+          </Button>
+          <span className="self-center text-sm text-muted-foreground">Page {page + 1}</span>
+        </div>
+      )}
     </div>
   );
 }
