@@ -2,8 +2,39 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireApproved } from "../backend/auth/middleware";
 import { query } from "../backend/db";
 
-const MAX_MEMORY_IMAGE_BYTES = 15 * 1024 * 1024;
-const ALLOWED_MEMORY_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const MAX_DOC_BYTES = 25 * 1024 * 1024;
+
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+  "video/mp4", "video/quicktime", "video/webm",
+  "application/pdf",
+  "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain", "text/csv",
+  "application/zip", "application/x-zip-compressed",
+]);
+
+function deriveAttachmentType(mimeType: string): string {
+  if (!mimeType) return "other";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType === "application/msword" || mimeType.includes("wordprocessingml")) return "document";
+  if (mimeType === "application/vnd.ms-powerpoint" || mimeType.includes("presentationml")) return "presentation";
+  if (mimeType === "application/vnd.ms-excel" || mimeType.includes("spreadsheetml") || mimeType === "text/csv") return "spreadsheet";
+  if (mimeType === "application/zip" || mimeType === "application/x-zip-compressed") return "archive";
+  if (mimeType === "text/plain") return "document";
+  return "other";
+}
+
+function maxBytesForType(mimeType: string): number {
+  if (mimeType.startsWith("image/")) return MAX_IMAGE_BYTES;
+  if (mimeType.startsWith("video/")) return MAX_VIDEO_BYTES;
+  return MAX_DOC_BYTES;
+}
 
 export interface MemoryComment {
   id: string;
@@ -19,6 +50,8 @@ export interface MemoryImage {
   fb_storage_path: string | null;
   file_name: string | null;
   file_size: number | null;
+  mime_type: string | null;
+  attachment_type: string | null;
   sort_order: number;
 }
 
@@ -65,7 +98,8 @@ export const listMemories = createServerFn({ method: "GET" })
          COALESCE((
            SELECT json_agg(json_build_object(
              'id', mi.id, 'image_url', mi.image_url, 'fb_storage_path', mi.fb_storage_path,
-             'file_name', mi.file_name, 'file_size', mi.file_size, 'sort_order', mi.sort_order
+             'file_name', mi.file_name, 'file_size', mi.file_size, 'sort_order', mi.sort_order,
+             'mime_type', mi.mime_type, 'attachment_type', mi.attachment_type
            ) ORDER BY mi.sort_order ASC, mi.created_at ASC)
            FROM memory_images mi WHERE mi.memory_id = m.id
          ), '[]'::json) AS images
@@ -78,7 +112,7 @@ export const listMemories = createServerFn({ method: "GET" })
       if (row.image_url) {
         return {
           ...row,
-          images: [{ id: row.id, image_url: row.image_url, fb_storage_path: null, file_name: null, file_size: null, sort_order: 0 }],
+          images: [{ id: row.id, image_url: row.image_url, fb_storage_path: null, file_name: null, file_size: null, mime_type: "image/jpeg", attachment_type: "image", sort_order: 0 }],
         };
       }
       return row;
@@ -114,6 +148,7 @@ export interface MemoryImageInput {
   fileName?: string;
   mimeType?: string;
   fileSize?: number;
+  attachmentType?: string;
 }
 
 export const addMemoryImages = createServerFn({ method: "POST" })
@@ -135,11 +170,13 @@ export const addMemoryImages = createServerFn({ method: "POST" })
     let nextOrder = (maxOrdRes.rows[0]?.max ?? -1) + 1;
 
     for (const img of data.images) {
-      if (!img.mimeType || !ALLOWED_MEMORY_IMAGE_TYPES.has(img.mimeType)) {
-        throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+      if (!img.mimeType || !ALLOWED_ATTACHMENT_TYPES.has(img.mimeType)) {
+        throw new Error(`Unsupported file type: ${img.mimeType || "unknown"}. Please upload images, videos, PDFs, Office documents, or ZIP archives.`);
       }
-      if ((img.fileSize ?? 0) > MAX_MEMORY_IMAGE_BYTES) {
-        throw new Error("This file is too large. Please upload a smaller image or compressed version.");
+      const maxBytes = maxBytesForType(img.mimeType);
+      if ((img.fileSize ?? 0) > maxBytes) {
+        const limitMB = Math.round(maxBytes / (1024 * 1024));
+        throw new Error(`File "${img.fileName || "attachment"}" exceeds the ${limitMB} MB limit for this file type.`);
       }
       // Server-side duplicate guard: skip if same memory already has same file_name + file_size.
       if (img.fileName && img.fileSize) {
@@ -149,10 +186,11 @@ export const addMemoryImages = createServerFn({ method: "POST" })
         );
         if (dup.rows.length > 0) continue;
       }
+      const attachmentType = img.attachmentType || deriveAttachmentType(img.mimeType || "");
       await query(
-        `INSERT INTO memory_images (memory_id, image_url, fb_storage_path, file_name, mime_type, file_size, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [data.memoryId, img.url, img.storagePath || null, img.fileName || null, img.mimeType || null, img.fileSize ?? null, nextOrder++],
+        `INSERT INTO memory_images (memory_id, image_url, fb_storage_path, file_name, mime_type, file_size, sort_order, attachment_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [data.memoryId, img.url, img.storagePath || null, img.fileName || null, img.mimeType || null, img.fileSize ?? null, nextOrder++, attachmentType],
       );
     }
     return { ok: true };
