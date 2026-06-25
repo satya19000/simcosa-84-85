@@ -6,7 +6,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
 } from "./session";
-import { upsertUserFromClaims, getProfile, isAdmin } from "./service";
+import { upsertUserFromClaims, getProfile, isAdmin, isOwner } from "./service";
 import { verifyFirebaseToken, type AuthClaims } from "./firebase";
 
 function json(body: unknown, init: ResponseInit = {}): Response {
@@ -63,9 +63,10 @@ export async function handleAuthUser(request: Request): Promise<Response> {
   if (!session) {
     return json({ authenticated: false });
   }
-  const [profile, admin] = await Promise.all([
+  const [profile, admin, owner] = await Promise.all([
     getProfile(session.userId),
     isAdmin(session.userId),
+    isOwner(session.userId),
   ]);
   return json({
     authenticated: true,
@@ -78,6 +79,7 @@ export async function handleAuthUser(request: Request): Promise<Response> {
     },
     profile,
     isAdmin: admin,
+    isOwner: owner,
   });
 }
 

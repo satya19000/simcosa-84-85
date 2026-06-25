@@ -44,8 +44,12 @@ CREATE TABLE IF NOT EXISTS member_presence (
 -- ROLES
 -- =========================
 DO $$ BEGIN
-  CREATE TYPE app_role AS ENUM ('admin', 'member');
+  CREATE TYPE app_role AS ENUM ('admin', 'member', 'owner');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+-- Idempotent migration: add 'owner' to existing databases.
+DO $$ BEGIN
+  ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'owner';
+EXCEPTION WHEN others THEN null; END $$;
 
 CREATE TABLE IF NOT EXISTS user_roles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
