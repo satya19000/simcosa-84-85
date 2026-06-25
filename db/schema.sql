@@ -282,8 +282,11 @@ CREATE TABLE IF NOT EXISTS memory_images (
   mime_type text,
   file_size bigint,
   sort_order integer DEFAULT 0,
+  attachment_type text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- Idempotent migration: add attachment_type if upgrading existing DB.
+ALTER TABLE memory_images ADD COLUMN IF NOT EXISTS attachment_type text;
 CREATE INDEX IF NOT EXISTS idx_memory_images_memory_sort_order ON memory_images(memory_id, sort_order, created_at);
 -- Unique guard: skip gracefully if existing duplicate rows prevent index creation.
 DO $$ BEGIN
