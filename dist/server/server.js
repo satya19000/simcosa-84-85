@@ -250,7 +250,14 @@ async function getProfile(userId) {
 }
 async function isAdmin(userId) {
   const res = await query(
-    `SELECT 1 FROM user_roles WHERE user_id = $1 AND role = 'admin' LIMIT 1`,
+    `SELECT 1 FROM user_roles WHERE user_id = $1 AND role IN ('admin', 'owner') LIMIT 1`,
+    [userId]
+  );
+  return res.rowCount > 0;
+}
+async function isOwner(userId) {
+  const res = await query(
+    `SELECT 1 FROM user_roles WHERE user_id = $1 AND role = 'owner' LIMIT 1`,
     [userId]
   );
   return res.rowCount > 0;
@@ -331,9 +338,10 @@ async function handleAuthUser(request) {
   if (!session) {
     return json({ authenticated: false });
   }
-  const [profile, admin] = await Promise.all([
+  const [profile, admin, owner] = await Promise.all([
     getProfile(session.userId),
-    isAdmin(session.userId)
+    isAdmin(session.userId),
+    isOwner(session.userId)
   ]);
   return json({
     authenticated: true,
@@ -345,7 +353,8 @@ async function handleAuthUser(request) {
       profile_image_url: session.claims.profile_image_url ?? null
     },
     profile,
-    isAdmin: admin
+    isAdmin: admin,
+    isOwner: owner
   });
 }
 const ROUTES = {
@@ -509,7 +518,7 @@ async function serveEventCover(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-DHZcNGpa.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-B6ODWh69.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
@@ -560,6 +569,7 @@ export {
   PROFILE_COLUMNS as P,
   SESSION_COOKIE as S,
   getProfile as a,
+  isOwner as b,
   server as default,
   getSession as g,
   isAdmin as i,
