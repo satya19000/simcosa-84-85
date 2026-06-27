@@ -408,6 +408,8 @@ export const adminEditEvent = createServerFn({ method: "POST" })
     const location = (data.location ?? "").trim();
     if (!title || !data.event_date) throw new Error("Title and date are required");
 
+    const isPublished = data.is_published !== undefined ? data.is_published : true;
+
     if (data.url) {
       if (!data.mimeType || !ALLOWED_EVENT_COVER_TYPES.has(data.mimeType)) {
         throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
@@ -417,24 +419,24 @@ export const adminEditEvent = createServerFn({ method: "POST" })
       }
       await query(
         `UPDATE events SET title=$2, description=$3, location=$4, event_date=$5, end_date=$6,
-           event_type=$7, rsvp_enabled=$8, external_link=$9,
-           cover_url=$10, fb_storage_path=$11, file_name=$12, file_size=$13, cover_mime=$14,
+           event_type=$7, rsvp_enabled=$8, external_link=$9, is_published=$10,
+           cover_url=$11, fb_storage_path=$12, file_name=$13, file_size=$14, cover_mime=$15,
            updated_at=now()
          WHERE id=$1`,
         [
           data.id, title, description || null, location || null, data.event_date, data.end_date || null,
-          data.event_type || "upcoming", data.rsvp_enabled ?? false, data.external_link || null,
+          data.event_type || "upcoming", data.rsvp_enabled ?? false, data.external_link || null, isPublished,
           data.url, data.storagePath || null, data.fileName || null, data.fileSize ?? null, data.mimeType || null,
         ],
       );
     } else {
       await query(
         `UPDATE events SET title=$2, description=$3, location=$4, event_date=$5, end_date=$6,
-           event_type=$7, rsvp_enabled=$8, external_link=$9, updated_at=now()
+           event_type=$7, rsvp_enabled=$8, external_link=$9, is_published=$10, updated_at=now()
          WHERE id=$1`,
         [
           data.id, title, description || null, location || null, data.event_date, data.end_date || null,
-          data.event_type || "upcoming", data.rsvp_enabled ?? false, data.external_link || null,
+          data.event_type || "upcoming", data.rsvp_enabled ?? false, data.external_link || null, isPublished,
         ],
       );
     }

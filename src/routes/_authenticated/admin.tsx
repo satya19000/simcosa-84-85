@@ -1363,7 +1363,10 @@ function fromEventRow(e: EventRow): EventFormState {
 function EventsTab() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const { data: events } = useQuery({ queryKey: ["admin-events"], queryFn: () => adminListEvents() });
+  const { data: events, isLoading: eventsLoading, error: eventsError } = useQuery({
+    queryKey: ["admin-events"],
+    queryFn: () => adminListEvents(),
+  });
 
   const [mode, setMode] = useState<"idle" | "add-upcoming" | "add-past" | "edit">("idle");
   const [editTarget, setEditTarget] = useState<EventRow | null>(null);
@@ -1374,6 +1377,13 @@ function EventsTab() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["admin-events"] });
     qc.invalidateQueries({ queryKey: ["events"] });
+  };
+
+  const openAdd = (type: "add-upcoming" | "add-past") => {
+    setEditTarget(null);
+    setCoverFiles([]);
+    uploadQueue.reset();
+    setMode(type);
   };
 
   const closeModal = () => {
@@ -1488,16 +1498,36 @@ function EventsTab() {
 
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3 mb-6">
-        <Button onClick={() => { closeModal(); setMode("add-upcoming"); }} className="h-11">
+        <Button type="button" onClick={() => openAdd("add-upcoming")} className="h-11">
           + Add Upcoming Event
         </Button>
-        <Button variant="outline" onClick={() => { closeModal(); setMode("add-past"); }} className="h-11">
+        <Button type="button" variant="outline" onClick={() => openAdd("add-past")} className="h-11">
           + Add Old / Past Event
         </Button>
       </div>
 
+      {eventsLoading && <p className="text-muted-foreground py-4">Loading events…</p>}
+      {eventsError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 mb-4">
+          <p className="font-semibold text-destructive text-sm">Failed to load events</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {eventsError instanceof Error ? eventsError.message : "Unknown error"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            If this is a new deployment, run the Neon migration SQL below on your database, then refresh.
+          </p>
+          <pre className="text-xs bg-muted rounded p-2 mt-2 overflow-x-auto whitespace-pre-wrap">{`ALTER TABLE events ADD COLUMN IF NOT EXISTS is_published boolean;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS event_type text DEFAULT 'upcoming';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS end_date timestamptz;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS rsvp_enabled boolean DEFAULT false;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS external_link text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS sort_order integer DEFAULT 0;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();`}</pre>
+        </div>
+      )}
+
       {/* Events list */}
-      {!events?.length && (
+      {!eventsLoading && !eventsError && !events?.length && (
         <p className="text-muted-foreground py-8 text-center">No events yet. Add your first event above.</p>
       )}
       <div className="space-y-3">
@@ -1527,11 +1557,13 @@ function EventsTab() {
               </div>
               <div className="flex flex-wrap gap-2 shrink-0">
                 <Button
+                  type="button"
                   variant="outline"
                   className="h-9 text-sm"
                   onClick={() => { setEditTarget(e); setMode("edit"); setCoverFiles([]); }}
                 >Edit</Button>
                 <Button
+                  type="button"
                   variant="outline"
                   className="h-9 text-sm"
                   onClick={() => togglePublished(e)}
@@ -1539,6 +1571,7 @@ function EventsTab() {
                   {isPublished ? "Unpublish" : "Publish"}
                 </Button>
                 <Button
+                  type="button"
                   variant="outline"
                   className="h-9 text-sm text-destructive hover:text-destructive"
                   onClick={() => del(e.id)}
