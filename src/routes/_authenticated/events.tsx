@@ -4,12 +4,13 @@ import { useState, useEffect, useRef } from "react";
 import { listEvents, listMyRsvps, listRsvpCounts, setRsvp as setRsvpFn, type EventRow } from "@/api/events";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { ImageLightbox } from "@/components/ImageLightbox";
 import {
   Calendar, MapPin, Users, Clock, CheckCircle, HelpCircle, XCircle,
   CalendarPlus, ExternalLink, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, formatDistanceToNow, isFuture, isPast } from "date-fns";
+import { format, formatDistanceToNow, isFuture } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/events")({
   head: () => ({ meta: [{ title: "Events & Reunions — SIMCOSA 84–85" }] }),
@@ -167,6 +168,15 @@ function Events() {
     queryFn: () => listRsvpCounts(),
   });
 
+  // Lightbox state — single shared lightbox for all event cover images
+  const [lbIndex, setLbIndex] = useState<number | null>(null);
+  const [lbImages, setLbImages] = useState<{ src: string; alt: string }[]>([]);
+
+  const openLightbox = (src: string, alt: string) => {
+    setLbImages([{ src, alt }]);
+    setLbIndex(0);
+  };
+
   const counts: Record<string, { attending: number; maybe: number; not_attending: number }> = {};
   for (const r of rawCounts ?? []) {
     const c = (counts[r.event_id] ??= { attending: 0, maybe: 0, not_attending: 0 });
@@ -213,6 +223,14 @@ function Events() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
+      {/* Shared lightbox for event cover images */}
+      <ImageLightbox
+        images={lbImages}
+        index={lbIndex}
+        onClose={() => setLbIndex(null)}
+        onIndexChange={setLbIndex}
+      />
+
       {/* Header */}
       <div className="bg-white border-b border-amber-100 px-4 py-10">
         <div className="mx-auto max-w-5xl">
@@ -252,9 +270,19 @@ function Events() {
                       </div>
                     )}
                     {e.cover_url && (
-                      <div className="w-full h-52 overflow-hidden">
-                        <img src={e.cover_url} alt={e.title} className="w-full h-full object-cover" loading="lazy" />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openLightbox(e.cover_url!, e.title)}
+                        aria-label={`View full image: ${e.title}`}
+                        className="block w-full h-52 overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                      >
+                        <img
+                          src={e.cover_url}
+                          alt={e.title}
+                          className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                          loading="lazy"
+                        />
+                      </button>
                     )}
                     <div className="p-6">
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -296,6 +324,7 @@ function Events() {
                         {e.rsvp_enabled && RSVP_OPTIONS.map(({ value, label, icon: Icon, active }) => (
                           <Button
                             key={value}
+                            type="button"
                             onClick={() => doRsvp(e.id, value)}
                             className={`h-10 px-4 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all ${my === value ? active : "bg-white border border-gray-200 text-gray-600 hover:border-amber-400 hover:text-amber-700"}`}
                           >
@@ -305,7 +334,7 @@ function Events() {
                         <AddToCalendarButton event={e} />
                         {e.external_link && (
                           <a href={e.external_link} target="_blank" rel="noopener noreferrer">
-                            <Button variant="outline" className="h-10 px-4 rounded-xl flex items-center gap-2 text-sm">
+                            <Button type="button" variant="outline" className="h-10 px-4 rounded-xl flex items-center gap-2 text-sm">
                               <ExternalLink className="h-4 w-4" /> View Details
                             </Button>
                           </a>
@@ -334,16 +363,26 @@ function Events() {
               {past.map((e) => {
                 const c = counts[e.id] ?? { attending: 0, maybe: 0, not_attending: 0 };
                 return (
-                  <article key={e.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden opacity-80 hover:opacity-100 transition-opacity">
+                  <article key={e.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
                     <div className="flex flex-col sm:flex-row">
                       {e.cover_url && (
-                        <div className="sm:w-36 h-32 sm:h-auto shrink-0 overflow-hidden">
-                          <img src={e.cover_url} alt={e.title} className="w-full h-full object-cover grayscale" loading="lazy" />
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openLightbox(e.cover_url!, e.title)}
+                          aria-label={`View full image: ${e.title}`}
+                          className="sm:w-40 h-36 sm:h-auto shrink-0 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                        >
+                          <img
+                            src={e.cover_url}
+                            alt={e.title}
+                            className="w-full h-full object-cover cursor-pointer transition-transform duration-300 hover:scale-105"
+                            loading="lazy"
+                          />
+                        </button>
                       )}
                       <div className="flex-1 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
-                          <h3 className="font-bold text-gray-700">{e.title}</h3>
+                          <h3 className="font-bold text-gray-800">{e.title}</h3>
                           <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-400">
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3.5 w-3.5" />
