@@ -131,6 +131,8 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS cover_mime text;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS fb_storage_path text;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS file_name text;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS file_size bigint;
+-- Publish/unpublish toggle; NULL treated as published (true) for backward compat.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS is_published boolean;
 
 CREATE TABLE IF NOT EXISTS event_rsvps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

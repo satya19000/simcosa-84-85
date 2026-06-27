@@ -14,6 +14,14 @@ export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
 });
 
+interface FormErrors {
+  full_name?: string;
+  phone?: string;
+  location?: string;
+  country_state?: string;
+  profession?: string;
+}
+
 function ProfilePage() {
   const { profile, user, isAdmin, refresh } = useAuth();
   const router = useRouter();
@@ -21,6 +29,8 @@ function ProfilePage() {
     full_name: "", phone: "", whatsapp: "", location: "", profession: "", bio: "",
     spouse_name: "", clinic_or_hospital: "", country_state: "",
   });
+  const [sameAsPhone, setSameAsPhone] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -37,8 +47,38 @@ function ProfilePage() {
     });
   }, [profile]);
 
+  const handlePhoneChange = (v: string) => {
+    setForm(f => ({ ...f, phone: v, whatsapp: sameAsPhone ? v : f.whatsapp }));
+  };
+
+  const handleSameAsPhone = (checked: boolean) => {
+    setSameAsPhone(checked);
+    if (checked) setForm(f => ({ ...f, whatsapp: f.phone }));
+  };
+
+  const validate = (): FormErrors => {
+    const e: FormErrors = {};
+    if (!form.full_name.trim()) e.full_name = "Full name is required";
+    const phone = form.phone.trim();
+    if (!phone) {
+      e.phone = "Mobile number is required";
+    } else if (phone.replace(/\D/g, "").length < 7) {
+      e.phone = "Enter a valid mobile number";
+    }
+    if (!form.location.trim()) e.location = "City / Location is required";
+    if (!form.country_state.trim()) e.country_state = "Country / State is required";
+    if (!form.profession.trim()) e.profession = "Profession / Speciality is required";
+    return e;
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+    setErrors({});
     setSaving(true);
     try {
       await updateMyProfile({ data: form });
@@ -70,6 +110,10 @@ function ProfilePage() {
     );
   })();
 
+  const field = (name: keyof FormErrors) => errors[name] ? (
+    <p className="text-red-500 text-xs mt-1">{errors[name]}</p>
+  ) : null;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
       {/* Header */}
@@ -77,12 +121,17 @@ function ProfilePage() {
         <div className="mx-auto max-w-2xl">
           <p className="text-amber-600 font-bold text-sm uppercase tracking-widest mb-2">Account</p>
           <h1>My Profile</h1>
-          <p className="text-gray-500 mt-2 text-lg">Keep your details up to date so classmates can find and connect with you.</p>
+          <p className="text-gray-500 mt-2 text-lg">Please complete your profile details so your batchmates can find and connect with you.</p>
         </div>
       </div>
 
       <div className="mx-auto max-w-2xl px-4 sm:px-6 py-8">
         {statusBanner}
+
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2.5 mb-5 text-amber-800 text-sm">
+          All fields marked <span className="font-bold text-red-500">*</span> are mandatory.
+        </div>
+
         {/* Avatar */}
         <div className="bg-white rounded-2xl border border-amber-100 shadow-sm p-6 mb-6 flex items-center gap-4">
           <div className="h-20 w-20 rounded-full bg-amber-100 flex items-center justify-center font-display text-3xl font-bold text-amber-700 shrink-0">
@@ -97,36 +146,87 @@ function ProfilePage() {
 
         <form onSubmit={save} className="bg-white rounded-2xl border border-amber-100 shadow-sm p-6 space-y-5">
           <div>
-            <Label className="font-semibold text-gray-700 flex items-center gap-2"><User className="h-4 w-4 text-amber-500" />Full name *</Label>
+            <Label className="font-semibold text-gray-700 flex items-center gap-2">
+              <User className="h-4 w-4 text-amber-500" />Full name <span className="text-red-500">*</span>
+            </Label>
             <Input
               value={form.full_name}
-              onChange={e => setForm({ ...form, full_name: e.target.value })}
-              required
+              onChange={e => { setForm({ ...form, full_name: e.target.value }); setErrors(er => ({ ...er, full_name: undefined })); }}
               placeholder="Dr. Your Name"
-              className="h-12 text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl"
+              className={`h-12 text-base mt-1 border-amber-200 focus:border-amber-400 rounded-xl ${errors.full_name ? "border-red-400" : ""}`}
             />
+            {field("full_name")}
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <Label className="font-semibold text-gray-700 flex items-center gap-2"><Phone className="h-4 w-4 text-amber-500" />Phone</Label>
-              <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+91 98765 43210" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+              <Label className="font-semibold text-gray-700 flex items-center gap-2">
+                <Phone className="h-4 w-4 text-amber-500" />Mobile <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                value={form.phone}
+                onChange={e => { handlePhoneChange(e.target.value); setErrors(er => ({ ...er, phone: undefined })); }}
+                placeholder="+91 98765 43210"
+                className={`h-12 text-base mt-1 border-amber-200 rounded-xl ${errors.phone ? "border-red-400" : ""}`}
+              />
+              {field("phone")}
             </div>
             <div>
-              <Label className="font-semibold text-gray-700 flex items-center gap-2"><MessageCircle className="h-4 w-4 text-emerald-500" />WhatsApp</Label>
-              <Input value={form.whatsapp} onChange={e => setForm({ ...form, whatsapp: e.target.value })} placeholder="+91 98765 43210" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+              <Label className="font-semibold text-gray-700 flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-emerald-500" />WhatsApp
+              </Label>
+              <Input
+                value={form.whatsapp}
+                onChange={e => setForm({ ...form, whatsapp: e.target.value })}
+                placeholder="+91 98765 43210"
+                disabled={sameAsPhone}
+                className="h-12 text-base mt-1 border-amber-200 rounded-xl"
+              />
+              <label className="flex items-center gap-2 mt-1.5 text-sm text-gray-500 cursor-pointer select-none">
+                <input type="checkbox" checked={sameAsPhone} onChange={e => handleSameAsPhone(e.target.checked)} className="accent-amber-500" />
+                Same as mobile
+              </label>
             </div>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <Label className="font-semibold text-gray-700 flex items-center gap-2"><MapPin className="h-4 w-4 text-amber-500" />City / Location</Label>
-              <Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Vijayawada, AP" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+              <Label className="font-semibold text-gray-700 flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-amber-500" />City / Location <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                value={form.location}
+                onChange={e => { setForm({ ...form, location: e.target.value }); setErrors(er => ({ ...er, location: undefined })); }}
+                placeholder="Vijayawada, AP"
+                className={`h-12 text-base mt-1 border-amber-200 rounded-xl ${errors.location ? "border-red-400" : ""}`}
+              />
+              {field("location")}
             </div>
             <div>
-              <Label className="font-semibold text-gray-700 flex items-center gap-2"><Briefcase className="h-4 w-4 text-amber-500" />Profession / Speciality</Label>
-              <Input value={form.profession} onChange={e => setForm({ ...form, profession: e.target.value })} placeholder="Cardiologist, Hyderabad" className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
+              <Label className="font-semibold text-gray-700 flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-amber-500" />Profession / Speciality <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                value={form.profession}
+                onChange={e => { setForm({ ...form, profession: e.target.value }); setErrors(er => ({ ...er, profession: undefined })); }}
+                placeholder="Cardiologist"
+                className={`h-12 text-base mt-1 border-amber-200 rounded-xl ${errors.profession ? "border-red-400" : ""}`}
+              />
+              {field("profession")}
             </div>
+          </div>
+
+          <div>
+            <Label className="font-semibold text-gray-700">
+              Current country / state <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              value={form.country_state}
+              onChange={e => { setForm({ ...form, country_state: e.target.value }); setErrors(er => ({ ...er, country_state: undefined })); }}
+              placeholder="India / Andhra Pradesh"
+              className={`h-12 text-base mt-1 border-amber-200 rounded-xl ${errors.country_state ? "border-red-400" : ""}`}
+            />
+            {field("country_state")}
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
@@ -138,11 +238,6 @@ function ProfilePage() {
               <Label className="font-semibold text-gray-700">Clinic / Hospital</Label>
               <Input value={form.clinic_or_hospital} onChange={e => setForm({ ...form, clinic_or_hospital: e.target.value })} className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
             </div>
-          </div>
-
-          <div>
-            <Label className="font-semibold text-gray-700">Current country / state</Label>
-            <Input value={form.country_state} onChange={e => setForm({ ...form, country_state: e.target.value })} className="h-12 text-base mt-1 border-amber-200 rounded-xl" />
           </div>
 
           <div>

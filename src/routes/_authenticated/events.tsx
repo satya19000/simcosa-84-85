@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { listEvents, listMyRsvps, listRsvpCounts, setRsvp as setRsvpFn } from "@/api/events";
+import { listEvents, listMyRsvps, listRsvpCounts, setRsvp as setRsvpFn, type EventRow } from "@/api/events";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Users, Clock, CheckCircle, HelpCircle, XCircle } from "lucide-react";
+import { Calendar, MapPin, Users, Clock, CheckCircle, HelpCircle, XCircle, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow, isFuture } from "date-fns";
 
@@ -41,6 +41,80 @@ function Countdown({ date }: { date: string }) {
           <p className="text-xs text-gray-500 uppercase font-semibold">{l}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function buildGoogleCalendarUrl(e: EventRow): string {
+  const start = new Date(e.event_date);
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: e.title,
+    dates: `${fmt(start)}/${fmt(end)}`,
+    ...(e.description ? { details: e.description } : {}),
+    ...(e.location ? { location: e.location } : {}),
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function downloadIcs(e: EventRow) {
+  const start = new Date(e.event_date);
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//SIMCOSA 84-85//EN",
+    "BEGIN:VEVENT",
+    `DTSTART:${fmt(start)}`,
+    `DTEND:${fmt(end)}`,
+    `SUMMARY:${e.title}`,
+    ...(e.description ? [`DESCRIPTION:${e.description.replace(/\n/g, "\\n")}`] : []),
+    ...(e.location ? [`LOCATION:${e.location}`] : []),
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${e.title.replace(/\s+/g, "-")}.ics`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function AddToCalendarButton({ event }: { event: EventRow }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <Button
+        variant="outline"
+        className="h-10 px-4 rounded-xl flex items-center gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
+        onClick={() => setOpen(o => !o)}
+      >
+        <CalendarPlus className="h-4 w-4" /> Add to Calendar
+      </Button>
+      {open && (
+        <div className="absolute z-20 top-12 left-0 bg-white border border-amber-200 rounded-xl shadow-lg py-1 min-w-[180px]">
+          <a
+            href={buildGoogleCalendarUrl(event)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-amber-50"
+            onClick={() => setOpen(false)}
+          >
+            Google Calendar
+          </a>
+          <button
+            className="block w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-amber-50"
+            onClick={() => { downloadIcs(event); setOpen(false); }}
+          >
+            Download .ics (Apple / Outlook)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -126,6 +200,11 @@ function Events() {
                         <Clock className="h-3.5 w-3.5" /> Next Upcoming Event
                       </div>
                     )}
+                    {e.cover_url && (
+                      <div className="w-full h-48 overflow-hidden">
+                        <img src={e.cover_url} alt={e.title} className="w-full h-full object-cover" loading="lazy" />
+                      </div>
+                    )}
                     <div className="p-6">
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                         <div className="flex-1">
@@ -150,7 +229,7 @@ function Events() {
                         </div>
                       )}
 
-                      <div className="mt-5 flex flex-wrap gap-2">
+                      <div className="mt-5 flex flex-wrap gap-2 items-center">
                         {RSVP_OPTIONS.map(({ value, label, icon: Icon, cls }) => (
                           <Button
                             key={value}
@@ -160,6 +239,7 @@ function Events() {
                             <Icon className="h-4 w-4" /> {label} {my === value && "✓"}
                           </Button>
                         ))}
+                        <AddToCalendarButton event={e} />
                       </div>
                     </div>
                   </div>
@@ -174,11 +254,16 @@ function Events() {
           <div>
             <h2 className="font-display text-2xl font-bold text-gray-800 mb-6">Past Events</h2>
             <div className="space-y-4">
-              {past.reverse().map((e) => {
+              {[...past].reverse().map((e) => {
                 const c = counts?.[e.id] ?? { attending: 0, maybe: 0, not_attending: 0 };
                 return (
-                  <div key={e.id} className="bg-white rounded-2xl border border-amber-100 p-5 opacity-75">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div key={e.id} className="bg-white rounded-2xl border border-amber-100 overflow-hidden opacity-80">
+                    {e.cover_url && (
+                      <div className="w-full h-32 overflow-hidden">
+                        <img src={e.cover_url} alt={e.title} className="w-full h-full object-cover grayscale" loading="lazy" />
+                      </div>
+                    )}
+                    <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
                         <h3 className="font-bold text-gray-700">{e.title}</h3>
                         <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-400">

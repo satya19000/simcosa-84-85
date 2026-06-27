@@ -7,8 +7,8 @@ import {
   adminListMembers,
   adminApproveMember, adminRejectMember, adminMarkNeedsClarification, adminDeleteMember,
   adminPromoteToAdmin, adminDemoteAdmin, adminListAdmins, adminAddAdminByEmail,
-  adminAddMember, adminImportMembers, type AdminImportRow,
-  adminListEvents, adminCreateEvent, adminDeleteEvent,
+  adminAddMember, adminImportMembers, adminEditMember, type AdminImportRow,
+  adminListEvents, adminCreateEvent, adminDeleteEvent, adminEditEvent, adminToggleEventPublished,
   adminListAnnouncements, adminCreateAnnouncement, adminDeleteAnnouncement,
   adminListDonations, adminCreateDonation,
   adminListExpenses, adminCreateExpense,
@@ -22,7 +22,8 @@ import { postMemory, addMemoryImages } from "@/api/memories";
 import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
 import { useUploadQueue } from "@/hooks/useUploadQueue";
-import type { ApprovalStatus } from "@/backend/auth/service";
+import type { ApprovalStatus, ProfileRow } from "@/backend/auth/service";
+import type { EventRow } from "@/api/events";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -341,10 +342,71 @@ function PendingMembersTab() {
   );
 }
 
+function EditMemberPanel({ member, onClose, onSaved }: { member: ProfileRow; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    full_name: member.full_name ?? "",
+    phone: member.phone ?? "",
+    whatsapp: member.whatsapp ?? "",
+    location: member.location ?? "",
+    profession: member.profession ?? "",
+    bio: member.bio ?? "",
+    spouse_name: member.spouse_name ?? "",
+    clinic_or_hospital: member.clinic_or_hospital ?? "",
+    country_state: member.country_state ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.full_name.trim()) { toast.error("Full name is required"); return; }
+    setSaving(true);
+    try {
+      await adminEditMember({ data: { id: member.id, ...form } });
+      toast.success("Member updated");
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+        <h3 className="font-semibold text-lg mb-4">Edit Member — {member.full_name}</h3>
+        <form onSubmit={save} className="space-y-3">
+          <div><Label>Full name *</Label><Input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} required className="h-11 mt-1" /></div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div><Label>Mobile</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="h-11 mt-1" /></div>
+            <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} className="h-11 mt-1" /></div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div><Label>City / Location</Label><Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} className="h-11 mt-1" /></div>
+            <div><Label>Profession</Label><Input value={form.profession} onChange={e => setForm(f => ({ ...f, profession: e.target.value }))} className="h-11 mt-1" /></div>
+          </div>
+          <div><Label>Country / State</Label><Input value={form.country_state} onChange={e => setForm(f => ({ ...f, country_state: e.target.value }))} className="h-11 mt-1" /></div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div><Label>Spouse name</Label><Input value={form.spouse_name} onChange={e => setForm(f => ({ ...f, spouse_name: e.target.value }))} className="h-11 mt-1" /></div>
+            <div><Label>Clinic / Hospital</Label><Input value={form.clinic_or_hospital} onChange={e => setForm(f => ({ ...f, clinic_or_hospital: e.target.value }))} className="h-11 mt-1" /></div>
+          </div>
+          <div><Label>Bio</Label><Textarea value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} rows={3} className="mt-1" /></div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={onClose} className="h-10">Cancel</Button>
+            <Button type="submit" disabled={saving} className="h-10">{saving ? "Saving…" : "Save changes"}</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ApprovedMembersTab() {
   const qc = useQueryClient();
   const { data } = useAdminMembers();
   const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<ProfileRow | null>(null);
   const { data: adminData } = useQuery({ queryKey: ["admin-admins"], queryFn: () => adminListAdmins() });
 
   const approved = (data?.filter((m) => m.approval_status === "approved") ?? []).filter((m) => {
@@ -373,6 +435,7 @@ function ApprovedMembersTab() {
     }
   };
   const disable = async (id: string) => {
+    if (!confirm("Disable this member?")) return;
     try {
       await adminRejectMember({ data: { id, reason: "Disabled by admin" } });
       toast.success("Member disabled");
@@ -384,6 +447,13 @@ function ApprovedMembersTab() {
 
   return (
     <div>
+      {editing && (
+        <EditMemberPanel
+          member={editing}
+          onClose={() => setEditing(null)}
+          onSaved={invalidate}
+        />
+      )}
       <Input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -402,6 +472,7 @@ function ApprovedMembersTab() {
               <p className="text-sm text-muted-foreground">{m.location || "—"} · {m.profession || "—"}</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setEditing(m)} variant="outline" className="h-10">Edit</Button>
               {!adminIds.has(m.id) && (
                 <Button onClick={() => promote(m.id)} variant="outline" className="h-10">Make Admin</Button>
               )}
@@ -1144,13 +1215,98 @@ function MergeDuplicateMemories() {
   );
 }
 
+function EditEventPanel({ event: ev, onClose, onSaved }: { event: EventRow; onClose: () => void; onSaved: () => void }) {
+  const { user } = useAuth();
+  const [form, setForm] = useState({
+    title: ev.title,
+    description: ev.description ?? "",
+    location: ev.location ?? "",
+    event_date: ev.event_date ? ev.event_date.slice(0, 16) : "",
+  });
+  const [coverFiles, setCoverFiles] = useState<File[]>([]);
+  const [saving, setSaving] = useState(false);
+  const uploadQueue = useUploadQueue();
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    const eventDate = new Date(form.event_date).toISOString();
+
+    let file = coverFiles[0];
+    if (file && file.size > MAX_ADMIN_UPLOAD_BYTES) {
+      toast.error("File too large. Please upload a smaller image.");
+      return;
+    }
+    setSaving(true);
+    const original = file;
+    if (original) uploadQueue.init([original]);
+    try {
+      let uploaded: { url: string; path: string } | null = null;
+      if (file) {
+        uploadQueue.setStatus(original!, "uploading", 0);
+        file = await compressImage(file);
+        uploaded = await uploadToFirebaseStorageResumable(file, "event-covers", user.id, (pct) =>
+          uploadQueue.setPct(original!, pct),
+        );
+        uploadQueue.setStatus(original!, "completed", 100);
+      }
+      await adminEditEvent({
+        data: {
+          id: ev.id,
+          title: form.title,
+          description: form.description || undefined,
+          location: form.location || undefined,
+          event_date: eventDate,
+          ...(uploaded ? { url: uploaded.url, storagePath: uploaded.path, fileName: file?.name, mimeType: file?.type, fileSize: file?.size } : {}),
+        },
+      });
+      toast.success("Event updated");
+      onSaved();
+      onClose();
+    } catch (err) {
+      if (original) uploadQueue.setStatus(original, "error");
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+        <h3 className="font-semibold text-lg mb-4">Edit Event</h3>
+        <form onSubmit={save} className="space-y-3">
+          <div><Label>Title *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required className="h-11 mt-1" /></div>
+          <div><Label>Date & time *</Label><Input type="datetime-local" value={form.event_date} onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))} required className="h-11 mt-1" /></div>
+          <div><Label>Location</Label><Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} className="h-11 mt-1" /></div>
+          <div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} className="mt-1" /></div>
+          <div>
+            <Label>Replace cover image (optional)</Label>
+            <DropzoneUpload files={coverFiles} onFilesChange={setCoverFiles} accept="image/*" multiple={false} disabled={saving} className="mt-1" progress={uploadQueue.progress} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={onClose} className="h-10">Cancel</Button>
+            <Button type="submit" disabled={saving} className="h-10">{saving ? "Saving…" : "Save changes"}</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function EventsTab() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-events"], queryFn: () => adminListEvents() });
   const [coverFiles, setCoverFiles] = useState<File[]>([]);
   const [creating, setCreating] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventRow | null>(null);
   const uploadQueue = useUploadQueue();
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["admin-events"] });
+    qc.invalidateQueries({ queryKey: ["events"] });
+  };
 
   const create = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1195,8 +1351,7 @@ function EventsTab() {
       setCoverFiles([]);
       uploadQueue.reset();
       toast.success("Upload completed successfully. Event created.");
-      qc.invalidateQueries({ queryKey: ["admin-events"] });
-      qc.invalidateQueries({ queryKey: ["events"] });
+      invalidate();
     } catch (err) {
       if (original) uploadQueue.setStatus(original, "error");
       toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
@@ -1204,19 +1359,38 @@ function EventsTab() {
       setCreating(false);
     }
   };
+
   const del = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this item?")) return;
+    if (!confirm("Are you sure you want to delete this event?")) return;
     const res = await adminDeleteEvent({ data: { id } });
-    qc.invalidateQueries({ queryKey: ["admin-events"] });
-    qc.invalidateQueries({ queryKey: ["events"] });
+    invalidate();
     if (res.fbStoragePath) {
       deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
         console.error("[admin/events] failed to delete storage object:", err),
       );
     }
   };
+
+  const togglePublished = async (id: string, currentlyPublished: boolean | null) => {
+    const newVal = !(currentlyPublished ?? true);
+    try {
+      await adminToggleEventPublished({ data: { id, published: newVal } });
+      toast.success(newVal ? "Event published" : "Event unpublished");
+      invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
   return (
     <div>
+      {editingEvent && (
+        <EditEventPanel
+          event={editingEvent}
+          onClose={() => setEditingEvent(null)}
+          onSaved={invalidate}
+        />
+      )}
       <form onSubmit={create} className="rounded-xl border border-border bg-card p-5 grid sm:grid-cols-2 gap-3">
         <div><Label>Title</Label><Input name="title" required className="h-11" /></div>
         <div><Label>Date & time</Label><Input name="event_date" type="datetime-local" required className="h-11" /></div>
@@ -1234,15 +1408,27 @@ function EventsTab() {
         </div>
       </form>
       <div className="mt-6 space-y-3">
-        {data?.map((e) => (
-          <div key={e.id} className="rounded-lg border border-border bg-card p-4 flex justify-between gap-3 items-center">
-            <div className="flex items-center gap-3">
-              {e.cover_url && <img src={e.cover_url} alt={e.title} className="h-12 w-12 rounded-lg object-cover shrink-0" loading="lazy" />}
-              <div><p className="font-semibold">{e.title}</p><p className="text-sm text-muted-foreground">{format(new Date(e.event_date), "PPP p")}</p></div>
+        {data?.map((e) => {
+          const isPublished = e.is_published ?? true;
+          return (
+            <div key={e.id} className={`rounded-lg border bg-card p-4 flex flex-wrap justify-between gap-3 items-center ${isPublished ? "border-border" : "border-amber-200 opacity-70"}`}>
+              <div className="flex items-center gap-3">
+                {e.cover_url && <img src={e.cover_url} alt={e.title} className="h-12 w-12 rounded-lg object-cover shrink-0" loading="lazy" />}
+                <div>
+                  <p className="font-semibold">{e.title} {!isPublished && <span className="text-xs text-amber-600 ml-2">[Draft]</span>}</p>
+                  <p className="text-sm text-muted-foreground">{format(new Date(e.event_date), "PPP p")}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setEditingEvent(e)} className="h-10">Edit</Button>
+                <Button variant="outline" onClick={() => togglePublished(e.id, e.is_published)} className="h-10">
+                  {isPublished ? "Unpublish" : "Publish"}
+                </Button>
+                <Button variant="outline" onClick={() => del(e.id)} className="h-10 text-destructive">Delete</Button>
+              </div>
             </div>
-            <Button variant="outline" onClick={() => del(e.id)}>Delete</Button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
