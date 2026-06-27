@@ -9,6 +9,7 @@ export interface EventRow {
   location: string | null;
   event_date: string;
   cover_url: string | null;
+  is_published: boolean | null;
   created_by: string | null;
   created_at: string;
 }
@@ -26,8 +27,9 @@ export const listEvents = createServerFn({ method: "GET" })
     const res = await query<EventRow>(
       `SELECT id, title, description, location, event_date,
          COALESCE(cover_url, CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE NULL END) AS cover_url,
+         COALESCE(is_published, true) AS is_published,
          created_by, created_at
-       FROM events ORDER BY event_date ASC`,
+       FROM events WHERE COALESCE(is_published, true) = true ORDER BY event_date ASC`,
     );
     return res.rows;
   });

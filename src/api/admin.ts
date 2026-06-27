@@ -303,6 +303,7 @@ export const adminListEvents = createServerFn({ method: "GET" })
     const res = await query<EventRow>(
       `SELECT id, title, description, location, event_date,
          COALESCE(cover_url, CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE NULL END) AS cover_url,
+         COALESCE(is_published, true) AS is_published,
          created_by, created_at
        FROM events ORDER BY event_date DESC`,
     );
@@ -367,6 +368,58 @@ export const adminDeleteEvent = createServerFn({ method: "POST" })
     const row = owned.rows[0];
     await query(`DELETE FROM events WHERE id = $1`, [data.id]);
     return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
+  });
+
+export interface AdminEditEventInput {
+  id: string;
+  title: string;
+  description?: string;
+  location?: string;
+  event_date: string;
+  url?: string;
+  storagePath?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+}
+
+export const adminEditEvent = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: AdminEditEventInput) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const title = data.title.trim();
+    const description = (data.description ?? "").trim();
+    const location = (data.location ?? "").trim();
+    if (!title || !data.event_date) throw new Error("Title and date are required");
+
+    if (data.url) {
+      if (!data.mimeType || !ALLOWED_EVENT_COVER_TYPES.has(data.mimeType)) {
+        throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
+      }
+      if ((data.fileSize ?? 0) > MAX_EVENT_COVER_BYTES) {
+        throw new Error("File too large. Please upload a smaller image.");
+      }
+      await query(
+        `UPDATE events SET title=$2, description=$3, location=$4, event_date=$5,
+           cover_url=$6, fb_storage_path=$7, file_name=$8, file_size=$9 WHERE id=$1`,
+        [data.id, title, description || null, location || null, data.event_date,
+         data.url, data.storagePath || null, data.fileName || null, data.fileSize ?? null],
+      );
+    } else {
+      await query(
+        `UPDATE events SET title=$2, description=$3, location=$4, event_date=$5 WHERE id=$1`,
+        [data.id, title, description || null, location || null, data.event_date],
+      );
+    }
+    return { ok: true };
+  });
+
+export const adminToggleEventPublished = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string; published: boolean }) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await query(`UPDATE events SET is_published=$2 WHERE id=$1`, [data.id, data.published]);
+    return { ok: true };
   });
 
 // ---- Announcements ----
