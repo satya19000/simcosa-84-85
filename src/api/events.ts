@@ -8,8 +8,13 @@ export interface EventRow {
   description: string | null;
   location: string | null;
   event_date: string;
+  end_date: string | null;
   cover_url: string | null;
   is_published: boolean | null;
+  event_type: string | null;
+  rsvp_enabled: boolean | null;
+  external_link: string | null;
+  sort_order: number | null;
   created_by: string | null;
   created_at: string;
 }
@@ -21,15 +26,23 @@ export interface RsvpRow {
   status: "attending" | "maybe" | "not_attending";
 }
 
+const EVENT_COLUMNS = `
+  id, title, description, location, event_date, end_date,
+  COALESCE(cover_url, CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE NULL END) AS cover_url,
+  COALESCE(is_published, true) AS is_published,
+  COALESCE(event_type, 'upcoming') AS event_type,
+  COALESCE(rsvp_enabled, false) AS rsvp_enabled,
+  external_link, sort_order, created_by, created_at
+`;
+
 export const listEvents = createServerFn({ method: "GET" })
   .middleware([requireApproved])
   .handler(async (): Promise<EventRow[]> => {
     const res = await query<EventRow>(
-      `SELECT id, title, description, location, event_date,
-         COALESCE(cover_url, CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE NULL END) AS cover_url,
-         COALESCE(is_published, true) AS is_published,
-         created_by, created_at
-       FROM events WHERE COALESCE(is_published, true) = true ORDER BY event_date ASC`,
+      `SELECT ${EVENT_COLUMNS}
+       FROM events
+       WHERE COALESCE(is_published, true) = true
+       ORDER BY COALESCE(sort_order, 0) ASC, event_date ASC`,
     );
     return res.rows;
   });

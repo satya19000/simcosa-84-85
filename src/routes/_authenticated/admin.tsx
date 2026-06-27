@@ -1215,78 +1215,125 @@ function MergeDuplicateMemories() {
   );
 }
 
-function EditEventPanel({ event: ev, onClose, onSaved }: { event: EventRow; onClose: () => void; onSaved: () => void }) {
-  const { user } = useAuth();
-  const [form, setForm] = useState({
-    title: ev.title,
-    description: ev.description ?? "",
-    location: ev.location ?? "",
-    event_date: ev.event_date ? ev.event_date.slice(0, 16) : "",
-  });
-  const [coverFiles, setCoverFiles] = useState<File[]>([]);
-  const [saving, setSaving] = useState(false);
-  const uploadQueue = useUploadQueue();
+// ── EventFormModal: shared form for create and edit ──────────────────────────
+interface EventFormState {
+  title: string;
+  description: string;
+  location: string;
+  event_date: string;
+  end_date: string;
+  event_type: string;
+  rsvp_enabled: boolean;
+  external_link: string;
+  is_published: boolean;
+}
 
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    const eventDate = new Date(form.event_date).toISOString();
-
-    let file = coverFiles[0];
-    if (file && file.size > MAX_ADMIN_UPLOAD_BYTES) {
-      toast.error("File too large. Please upload a smaller image.");
-      return;
-    }
-    setSaving(true);
-    const original = file;
-    if (original) uploadQueue.init([original]);
-    try {
-      let uploaded: { url: string; path: string } | null = null;
-      if (file) {
-        uploadQueue.setStatus(original!, "uploading", 0);
-        file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorageResumable(file, "event-covers", user.id, (pct) =>
-          uploadQueue.setPct(original!, pct),
-        );
-        uploadQueue.setStatus(original!, "completed", 100);
-      }
-      await adminEditEvent({
-        data: {
-          id: ev.id,
-          title: form.title,
-          description: form.description || undefined,
-          location: form.location || undefined,
-          event_date: eventDate,
-          ...(uploaded ? { url: uploaded.url, storagePath: uploaded.path, fileName: file?.name, mimeType: file?.type, fileSize: file?.size } : {}),
-        },
-      });
-      toast.success("Event updated");
-      onSaved();
-      onClose();
-    } catch (err) {
-      if (original) uploadQueue.setStatus(original, "error");
-      toast.error(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  };
+function EventFormModal({
+  title: modalTitle,
+  initial,
+  onClose,
+  onSave,
+  saving,
+  coverFiles,
+  setCoverFiles,
+  uploadProgress,
+  defaultEventType,
+}: {
+  title: string;
+  initial: EventFormState;
+  onClose: () => void;
+  onSave: (form: EventFormState) => void;
+  saving: boolean;
+  coverFiles: File[];
+  setCoverFiles: (f: File[]) => void;
+  uploadProgress: Record<string, import("@/lib/upload-progress").FileUploadState>;
+  defaultEventType?: string;
+}) {
+  const [form, setForm] = useState<EventFormState>(initial);
+  const set = <K extends keyof EventFormState>(k: K, v: EventFormState[K]) =>
+    setForm(f => ({ ...f, [k]: v }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-        <h3 className="font-semibold text-lg mb-4">Edit Event</h3>
-        <form onSubmit={save} className="space-y-3">
-          <div><Label>Title *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required className="h-11 mt-1" /></div>
-          <div><Label>Date & time *</Label><Input type="datetime-local" value={form.event_date} onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))} required className="h-11 mt-1" /></div>
-          <div><Label>Location</Label><Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} className="h-11 mt-1" /></div>
-          <div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} className="mt-1" /></div>
-          <div>
-            <Label>Replace cover image (optional)</Label>
-            <DropzoneUpload files={coverFiles} onFilesChange={setCoverFiles} accept="image/*" multiple={false} disabled={saving} className="mt-1" progress={uploadQueue.progress} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] overflow-y-auto p-6">
+        <h3 className="font-semibold text-lg mb-4">{modalTitle}</h3>
+        <form
+          onSubmit={e => { e.preventDefault(); onSave(form); }}
+          className="space-y-3"
+        >
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Label>Title *</Label>
+              <Input value={form.title} onChange={e => set("title", e.target.value)} required className="h-11 mt-1" />
+            </div>
+            <div>
+              <Label>Event date *</Label>
+              <Input type="datetime-local" value={form.event_date} onChange={e => set("event_date", e.target.value)} required className="h-11 mt-1" />
+            </div>
+            <div>
+              <Label>End date / time (optional)</Label>
+              <Input type="datetime-local" value={form.end_date} onChange={e => set("end_date", e.target.value)} className="h-11 mt-1" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Venue / Location</Label>
+              <Input value={form.location} onChange={e => set("location", e.target.value)} placeholder="Hotel name, city, address…" className="h-11 mt-1" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Description</Label>
+              <Textarea value={form.description} onChange={e => set("description", e.target.value)} rows={3} className="mt-1" />
+            </div>
+            <div>
+              <Label>Event type</Label>
+              <Select value={form.event_type} onValueChange={v => set("event_type", v)}>
+                <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="upcoming">Upcoming</SelectItem>
+                  <SelectItem value="past">Past / Old event</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Published</Label>
+              <Select value={form.is_published ? "yes" : "no"} onValueChange={v => set("is_published", v === "yes")}>
+                <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yes">Published (visible to members)</SelectItem>
+                  <SelectItem value="no">Draft (admin only)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>RSVP enabled</Label>
+              <Select value={form.rsvp_enabled ? "yes" : "no"} onValueChange={v => set("rsvp_enabled", v === "yes")}>
+                <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yes">Yes — show RSVP buttons</SelectItem>
+                  <SelectItem value="no">No</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>External link (optional)</Label>
+              <Input value={form.external_link} onChange={e => set("external_link", e.target.value)} placeholder="https://…" className="h-11 mt-1" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Cover image (optional)</Label>
+              <DropzoneUpload
+                files={coverFiles}
+                onFilesChange={setCoverFiles}
+                accept="image/*"
+                multiple={false}
+                disabled={saving}
+                className="mt-1"
+                progress={uploadProgress}
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} className="h-10">Cancel</Button>
-            <Button type="submit" disabled={saving} className="h-10">{saving ? "Saving…" : "Save changes"}</Button>
+            <Button type="button" variant="outline" onClick={onClose} className="h-10" disabled={saving}>Cancel</Button>
+            <Button type="submit" disabled={saving} className="h-10">
+              {saving ? "Saving…" : "Save event"}
+            </Button>
           </div>
         </form>
       </div>
@@ -1294,13 +1341,34 @@ function EditEventPanel({ event: ev, onClose, onSaved }: { event: EventRow; onCl
   );
 }
 
+const EMPTY_EVENT_FORM = (eventType = "upcoming"): EventFormState => ({
+  title: "", description: "", location: "", event_date: "", end_date: "",
+  event_type: eventType, rsvp_enabled: false, external_link: "", is_published: true,
+});
+
+function fromEventRow(e: EventRow): EventFormState {
+  return {
+    title: e.title,
+    description: e.description ?? "",
+    location: e.location ?? "",
+    event_date: e.event_date ? e.event_date.slice(0, 16) : "",
+    end_date: e.end_date ? e.end_date.slice(0, 16) : "",
+    event_type: e.event_type ?? "upcoming",
+    rsvp_enabled: e.rsvp_enabled ?? false,
+    external_link: e.external_link ?? "",
+    is_published: e.is_published ?? true,
+  };
+}
+
 function EventsTab() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["admin-events"], queryFn: () => adminListEvents() });
+  const { data: events } = useQuery({ queryKey: ["admin-events"], queryFn: () => adminListEvents() });
+
+  const [mode, setMode] = useState<"idle" | "add-upcoming" | "add-past" | "edit">("idle");
+  const [editTarget, setEditTarget] = useState<EventRow | null>(null);
   const [coverFiles, setCoverFiles] = useState<File[]>([]);
-  const [creating, setCreating] = useState(false);
-  const [editingEvent, setEditingEvent] = useState<EventRow | null>(null);
+  const [saving, setSaving] = useState(false);
   const uploadQueue = useUploadQueue();
 
   const invalidate = () => {
@@ -1308,123 +1376,173 @@ function EventsTab() {
     qc.invalidateQueries({ queryKey: ["events"] });
   };
 
-  const create = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!user) return;
-    const form = e.currentTarget;
-    const fd = new FormData(form);
-    const eventDate = new Date(String(fd.get("event_date"))).toISOString();
+  const closeModal = () => {
+    setMode("idle");
+    setEditTarget(null);
+    setCoverFiles([]);
+    uploadQueue.reset();
+  };
 
-    let file = coverFiles[0];
-    if (file && file.size > MAX_ADMIN_UPLOAD_BYTES) {
-      toast.error("This file is too large. Please upload a smaller image or compressed version.");
-      return;
-    }
+  const uploadCoverIfNeeded = async (file: File | undefined): Promise<{ url: string; path: string; name: string; type: string; size: number } | null> => {
+    if (!file || !user) return null;
+    if (file.size > MAX_ADMIN_UPLOAD_BYTES) throw new Error("File too large. Please upload a smaller image.");
+    uploadQueue.init([file]);
+    uploadQueue.setStatus(file, "uploading", 0);
+    const compressed = await compressImage(file);
+    const uploaded = await uploadToFirebaseStorageResumable(compressed, "event-covers", user.id, (pct) =>
+      uploadQueue.setPct(file, pct),
+    );
+    uploadQueue.setStatus(file, "completed", 100);
+    return { url: uploaded.url, path: uploaded.path, name: compressed.name, type: compressed.type, size: compressed.size };
+  };
 
-    setCreating(true);
-    const original = file;
-    if (original) uploadQueue.init([original]);
+  const handleSave = async (form: EventFormState) => {
+    if (!form.title.trim()) { toast.error("Title is required"); return; }
+    if (!form.event_date) { toast.error("Event date is required"); return; }
+    setSaving(true);
     try {
-      let uploaded: { url: string; path: string } | null = null;
-      if (file) {
-        uploadQueue.setStatus(original!, "uploading", 0);
-        file = await compressImage(file);
-        uploaded = await uploadToFirebaseStorageResumable(file, "event-covers", user.id, (pct) =>
-          uploadQueue.setPct(original!, pct),
-        );
-        uploadQueue.setStatus(original!, "completed", 100);
+      const cover = await uploadCoverIfNeeded(coverFiles[0]).catch(err => { throw err; });
+      const payload = {
+        title: form.title.trim(),
+        description: form.description || undefined,
+        location: form.location || undefined,
+        event_date: new Date(form.event_date).toISOString(),
+        end_date: form.end_date ? new Date(form.end_date).toISOString() : undefined,
+        event_type: form.event_type,
+        rsvp_enabled: form.rsvp_enabled,
+        external_link: form.external_link || undefined,
+        is_published: form.is_published,
+        ...(cover ? { url: cover.url, storagePath: cover.path, fileName: cover.name, mimeType: cover.type, fileSize: cover.size } : {}),
+      };
+
+      if (mode === "edit" && editTarget) {
+        await adminEditEvent({ data: { id: editTarget.id, ...payload } });
+        toast.success("Event updated");
+      } else {
+        await adminCreateEvent({ data: payload });
+        toast.success("Event created");
       }
-      await adminCreateEvent({
-        data: {
-          title: String(fd.get("title") || ""),
-          description: String(fd.get("description") || "") || undefined,
-          location: String(fd.get("location") || "") || undefined,
-          event_date: eventDate,
-          url: uploaded?.url,
-          storagePath: uploaded?.path,
-          fileName: file?.name,
-          mimeType: file?.type,
-          fileSize: file?.size,
-        },
-      });
-      form.reset();
-      setCoverFiles([]);
-      uploadQueue.reset();
-      toast.success("Upload completed successfully. Event created.");
+      closeModal();
       invalidate();
     } catch (err) {
-      if (original) uploadQueue.setStatus(original, "error");
-      toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
+      if (coverFiles[0]) uploadQueue.setStatus(coverFiles[0], "error");
+      toast.error(err instanceof Error ? err.message : "Failed to save event");
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
   };
 
   const del = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this event?")) return;
-    const res = await adminDeleteEvent({ data: { id } });
-    invalidate();
-    if (res.fbStoragePath) {
-      deleteFromFirebaseStorage(res.fbStoragePath).catch((err) =>
-        console.error("[admin/events] failed to delete storage object:", err),
-      );
+    if (!confirm("Delete this event? This cannot be undone.")) return;
+    try {
+      const res = await adminDeleteEvent({ data: { id } });
+      toast.success("Event deleted");
+      invalidate();
+      if (res.fbStoragePath) {
+        deleteFromFirebaseStorage(res.fbStoragePath).catch(err =>
+          console.error("[admin/events] storage delete failed:", err),
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     }
   };
 
-  const togglePublished = async (id: string, currentlyPublished: boolean | null) => {
-    const newVal = !(currentlyPublished ?? true);
+  const togglePublished = async (e: EventRow) => {
+    const newVal = !(e.is_published ?? true);
     try {
-      await adminToggleEventPublished({ data: { id, published: newVal } });
-      toast.success(newVal ? "Event published" : "Event unpublished");
+      await adminToggleEventPublished({ data: { id: e.id, published: newVal } });
+      toast.success(newVal ? "Event published" : "Event unpublished (draft)");
       invalidate();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
   };
 
+  const modalInitial: EventFormState =
+    mode === "edit" && editTarget
+      ? fromEventRow(editTarget)
+      : mode === "add-past"
+        ? EMPTY_EVENT_FORM("past")
+        : EMPTY_EVENT_FORM("upcoming");
+
+  const modalTitle =
+    mode === "edit" ? "Edit Event"
+    : mode === "add-past" ? "Add Old / Past Event"
+    : "Add Upcoming Event";
+
   return (
     <div>
-      {editingEvent && (
-        <EditEventPanel
-          event={editingEvent}
-          onClose={() => setEditingEvent(null)}
-          onSaved={invalidate}
+      {mode !== "idle" && (
+        <EventFormModal
+          title={modalTitle}
+          initial={modalInitial}
+          onClose={closeModal}
+          onSave={handleSave}
+          saving={saving}
+          coverFiles={coverFiles}
+          setCoverFiles={setCoverFiles}
+          uploadProgress={uploadQueue.progress}
         />
       )}
-      <form onSubmit={create} className="rounded-xl border border-border bg-card p-5 grid sm:grid-cols-2 gap-3">
-        <div><Label>Title</Label><Input name="title" required className="h-11" /></div>
-        <div><Label>Date & time</Label><Input name="event_date" type="datetime-local" required className="h-11" /></div>
-        <div><Label>Location</Label><Input name="location" className="h-11" /></div>
-        <div className="sm:col-span-2"><Label>Description</Label><Textarea name="description" rows={3} /></div>
-        <div className="sm:col-span-2">
-          <Label>Cover image (optional)</Label>
-          <DropzoneUpload files={coverFiles} onFilesChange={setCoverFiles} accept="image/*" multiple={false} disabled={creating} className="mt-1" progress={uploadQueue.progress} />
-        </div>
-        <div className="sm:col-span-2 flex items-center gap-4">
-          <Button type="submit" disabled={creating} className="h-11">
-            {creating ? "Creating…" : "Create event"}
-          </Button>
-          {creating && coverFiles.length > 0 && <span className="text-sm text-amber-700 font-semibold">Uploading… please wait</span>}
-        </div>
-      </form>
-      <div className="mt-6 space-y-3">
-        {data?.map((e) => {
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-3 mb-6">
+        <Button onClick={() => { closeModal(); setMode("add-upcoming"); }} className="h-11">
+          + Add Upcoming Event
+        </Button>
+        <Button variant="outline" onClick={() => { closeModal(); setMode("add-past"); }} className="h-11">
+          + Add Old / Past Event
+        </Button>
+      </div>
+
+      {/* Events list */}
+      {!events?.length && (
+        <p className="text-muted-foreground py-8 text-center">No events yet. Add your first event above.</p>
+      )}
+      <div className="space-y-3">
+        {events?.map((e) => {
           const isPublished = e.is_published ?? true;
+          const isPast = (e.event_type ?? "upcoming") === "past";
           return (
-            <div key={e.id} className={`rounded-lg border bg-card p-4 flex flex-wrap justify-between gap-3 items-center ${isPublished ? "border-border" : "border-amber-200 opacity-70"}`}>
-              <div className="flex items-center gap-3">
-                {e.cover_url && <img src={e.cover_url} alt={e.title} className="h-12 w-12 rounded-lg object-cover shrink-0" loading="lazy" />}
-                <div>
-                  <p className="font-semibold">{e.title} {!isPublished && <span className="text-xs text-amber-600 ml-2">[Draft]</span>}</p>
-                  <p className="text-sm text-muted-foreground">{format(new Date(e.event_date), "PPP p")}</p>
+            <div key={e.id} className={`rounded-lg border bg-card p-4 flex flex-wrap justify-between gap-3 items-start ${isPublished ? "border-border" : "border-amber-200 bg-amber-50/30"}`}>
+              <div className="flex items-start gap-3 min-w-0">
+                {e.cover_url && (
+                  <img src={e.cover_url} alt={e.title} className="h-14 w-14 rounded-lg object-cover shrink-0" loading="lazy" />
+                )}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold truncate">{e.title}</p>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isPast ? "bg-gray-100 text-gray-500" : "bg-emerald-100 text-emerald-700"}`}>
+                      {isPast ? "Past" : "Upcoming"}
+                    </span>
+                    {!isPublished && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Draft</span>}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {format(new Date(e.event_date), "PPP p")}
+                    {e.location && ` · ${e.location}`}
+                  </p>
+                  {e.rsvp_enabled && <p className="text-xs text-emerald-600 mt-0.5">RSVP enabled</p>}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setEditingEvent(e)} className="h-10">Edit</Button>
-                <Button variant="outline" onClick={() => togglePublished(e.id, e.is_published)} className="h-10">
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  className="h-9 text-sm"
+                  onClick={() => { setEditTarget(e); setMode("edit"); setCoverFiles([]); }}
+                >Edit</Button>
+                <Button
+                  variant="outline"
+                  className="h-9 text-sm"
+                  onClick={() => togglePublished(e)}
+                >
                   {isPublished ? "Unpublish" : "Publish"}
                 </Button>
-                <Button variant="outline" onClick={() => del(e.id)} className="h-10 text-destructive">Delete</Button>
+                <Button
+                  variant="outline"
+                  className="h-9 text-sm text-destructive hover:text-destructive"
+                  onClick={() => del(e.id)}
+                >Delete</Button>
               </div>
             </div>
           );
