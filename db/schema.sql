@@ -133,6 +133,13 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS file_name text;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS file_size bigint;
 -- Publish/unpublish toggle; NULL treated as published (true) for backward compat.
 ALTER TABLE events ADD COLUMN IF NOT EXISTS is_published boolean;
+-- Event classification and scheduling fields.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS event_type text DEFAULT 'upcoming';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS end_date timestamptz;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS rsvp_enabled boolean DEFAULT false;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS external_link text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS sort_order integer DEFAULT 0;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS event_rsvps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

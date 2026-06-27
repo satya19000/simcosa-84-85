@@ -297,15 +297,22 @@ export const adminDemoteAdmin = createServerFn({ method: "POST" })
 const MAX_EVENT_COVER_BYTES = 15 * 1024 * 1024;
 const ALLOWED_EVENT_COVER_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
+const ADMIN_EVENT_COLUMNS = `
+  id, title, description, location, event_date, end_date,
+  COALESCE(cover_url, CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE NULL END) AS cover_url,
+  COALESCE(is_published, true) AS is_published,
+  COALESCE(event_type, 'upcoming') AS event_type,
+  COALESCE(rsvp_enabled, false) AS rsvp_enabled,
+  external_link, sort_order, created_by, created_at
+`;
+
 export const adminListEvents = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .handler(async (): Promise<EventRow[]> => {
     const res = await query<EventRow>(
-      `SELECT id, title, description, location, event_date,
-         COALESCE(cover_url, CASE WHEN cover_data IS NOT NULL THEN '/api/events/cover/' || id ELSE NULL END) AS cover_url,
-         COALESCE(is_published, true) AS is_published,
-         created_by, created_at
-       FROM events ORDER BY event_date DESC`,
+      `SELECT ${ADMIN_EVENT_COLUMNS}
+       FROM events
+       ORDER BY COALESCE(sort_order, 0) ASC, event_date DESC`,
     );
     return res.rows;
   });
@@ -315,6 +322,11 @@ export interface AdminCreateEventInput {
   description?: string;
   location?: string;
   event_date: string;
+  end_date?: string;
+  event_type?: string;
+  rsvp_enabled?: boolean;
+  external_link?: string;
+  is_published?: boolean;
   url?: string;
   storagePath?: string;
   fileName?: string;
@@ -325,7 +337,7 @@ export interface AdminCreateEventInput {
 export const adminCreateEvent = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: AdminCreateEventInput) => d)
-  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+  .handler(async ({ data, context }): Promise<{ ok: true; id: string }> => {
     const title = data.title.trim();
     const description = (data.description ?? "").trim();
     const location = (data.location ?? "").trim();
@@ -336,38 +348,37 @@ export const adminCreateEvent = createServerFn({ method: "POST" })
     let fbStoragePath: string | null = null;
     let fileName: string | null = null;
     let fileSize: number | null = null;
+    let coverMime: string | null = null;
     if (data.url) {
       if (!data.mimeType || !ALLOWED_EVENT_COVER_TYPES.has(data.mimeType)) {
         throw new Error("Unsupported image format. Please use JPG, PNG, or WEBP.");
       }
       if ((data.fileSize ?? 0) > MAX_EVENT_COVER_BYTES) {
-        throw new Error("This file is too large. Please upload a smaller image or compressed version.");
+        throw new Error("File too large. Please upload a smaller image or compressed version.");
       }
       coverUrl = data.url;
       fbStoragePath = data.storagePath || null;
       fileName = data.fileName || null;
       fileSize = data.fileSize ?? null;
+      coverMime = data.mimeType || null;
     }
 
-    await query(
-      `INSERT INTO events (title, description, location, event_date, cover_url, fb_storage_path, file_name, file_size, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [title, description || null, location || null, eventDate, coverUrl, fbStoragePath, fileName, fileSize, context.userId],
-    );
-    return { ok: true };
-  });
+    const eventType = data.event_type || "upcoming";
+    const isPublished = data.is_published !== undefined ? data.is_published : true;
 
-export const adminDeleteEvent = createServerFn({ method: "POST" })
-  .middleware([requireAdmin])
-  .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data }): Promise<{ ok: true; fbStoragePath: string | null }> => {
-    const owned = await query<{ fb_storage_path: string | null }>(
-      `SELECT fb_storage_path FROM events WHERE id = $1`,
-      [data.id],
+    const res = await query<{ id: string }>(
+      `INSERT INTO events
+         (title, description, location, event_date, end_date, cover_url, fb_storage_path,
+          file_name, file_size, cover_mime, event_type, rsvp_enabled, external_link, is_published, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       RETURNING id`,
+      [
+        title, description || null, location || null, eventDate,
+        data.end_date || null, coverUrl, fbStoragePath, fileName, fileSize, coverMime,
+        eventType, data.rsvp_enabled ?? false, data.external_link || null, isPublished, context.userId,
+      ],
     );
-    const row = owned.rows[0];
-    await query(`DELETE FROM events WHERE id = $1`, [data.id]);
-    return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
+    return { ok: true, id: res.rows[0].id };
   });
 
 export interface AdminEditEventInput {
@@ -376,6 +387,11 @@ export interface AdminEditEventInput {
   description?: string;
   location?: string;
   event_date: string;
+  end_date?: string;
+  event_type?: string;
+  rsvp_enabled?: boolean;
+  external_link?: string;
+  is_published?: boolean;
   url?: string;
   storagePath?: string;
   fileName?: string;
@@ -400,25 +416,49 @@ export const adminEditEvent = createServerFn({ method: "POST" })
         throw new Error("File too large. Please upload a smaller image.");
       }
       await query(
-        `UPDATE events SET title=$2, description=$3, location=$4, event_date=$5,
-           cover_url=$6, fb_storage_path=$7, file_name=$8, file_size=$9 WHERE id=$1`,
-        [data.id, title, description || null, location || null, data.event_date,
-         data.url, data.storagePath || null, data.fileName || null, data.fileSize ?? null],
+        `UPDATE events SET title=$2, description=$3, location=$4, event_date=$5, end_date=$6,
+           event_type=$7, rsvp_enabled=$8, external_link=$9,
+           cover_url=$10, fb_storage_path=$11, file_name=$12, file_size=$13, cover_mime=$14,
+           updated_at=now()
+         WHERE id=$1`,
+        [
+          data.id, title, description || null, location || null, data.event_date, data.end_date || null,
+          data.event_type || "upcoming", data.rsvp_enabled ?? false, data.external_link || null,
+          data.url, data.storagePath || null, data.fileName || null, data.fileSize ?? null, data.mimeType || null,
+        ],
       );
     } else {
       await query(
-        `UPDATE events SET title=$2, description=$3, location=$4, event_date=$5 WHERE id=$1`,
-        [data.id, title, description || null, location || null, data.event_date],
+        `UPDATE events SET title=$2, description=$3, location=$4, event_date=$5, end_date=$6,
+           event_type=$7, rsvp_enabled=$8, external_link=$9, updated_at=now()
+         WHERE id=$1`,
+        [
+          data.id, title, description || null, location || null, data.event_date, data.end_date || null,
+          data.event_type || "upcoming", data.rsvp_enabled ?? false, data.external_link || null,
+        ],
       );
     }
     return { ok: true };
+  });
+
+export const adminDeleteEvent = createServerFn({ method: "POST" })
+  .middleware([requireAdmin])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data }): Promise<{ ok: true; fbStoragePath: string | null }> => {
+    const owned = await query<{ fb_storage_path: string | null }>(
+      `SELECT fb_storage_path FROM events WHERE id = $1`,
+      [data.id],
+    );
+    const row = owned.rows[0];
+    await query(`DELETE FROM events WHERE id = $1`, [data.id]);
+    return { ok: true, fbStoragePath: row?.fb_storage_path ?? null };
   });
 
 export const adminToggleEventPublished = createServerFn({ method: "POST" })
   .middleware([requireAdmin])
   .inputValidator((d: { id: string; published: boolean }) => d)
   .handler(async ({ data }): Promise<{ ok: true }> => {
-    await query(`UPDATE events SET is_published=$2 WHERE id=$1`, [data.id, data.published]);
+    await query(`UPDATE events SET is_published=$2, updated_at=now() WHERE id=$1`, [data.id, data.published]);
     return { ok: true };
   });
 
