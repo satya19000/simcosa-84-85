@@ -5,6 +5,7 @@ import Home from '@/pages/Home'
 import Chat from '@/pages/Chat'
 import Calendar from '@/pages/Calendar'
 import Tasks from '@/pages/Tasks'
+import Contacts from '@/pages/Contacts'
 import Vault from '@/pages/Vault'
 import Profile from '@/pages/Profile'
 import Login from '@/pages/auth/Login'
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/chat" element={<Chat />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/contacts" element={<Contacts />} />
           <Route path="/vault" element={<Vault />} />
           <Route path="/profile" element={<Profile />} />
         </Route>

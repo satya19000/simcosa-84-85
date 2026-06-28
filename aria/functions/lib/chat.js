@@ -80,7 +80,53 @@ exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeout
     catch {
         userDisplayName = request.auth.token?.name;
     }
-    const systemPrompt = (0, ariaSystem_1.buildAriaSystemPrompt)(userTimezone, userDisplayName);
+    // Load contact context — recent contacts + any name-matching the user's message
+    let contactContext = '';
+    try {
+        const contactsSnap = await db
+            .collection('users').doc(userId)
+            .collection('contacts')
+            .orderBy('updatedAt', 'desc')
+            .limit(20)
+            .get();
+        if (!contactsSnap.empty) {
+            const msgLower = message.toLowerCase();
+            const lines = [];
+            for (const doc of contactsSnap.docs) {
+                const d = doc.data();
+                const name = d.name ?? '';
+                // Include if name appears in message, or always include top contacts compactly
+                const isNamedInMsg = name.length > 0 && msgLower.includes(name.toLowerCase());
+                const parts = [name];
+                if (d.relationshipType)
+                    parts.push(d.relationshipType);
+                if (d.role)
+                    parts.push(d.role);
+                if (d.organization)
+                    parts.push(d.organization);
+                if (d.preferredContactMethod && d.preferredContactMethod !== 'unknown') {
+                    parts.push(`prefers ${d.preferredContactMethod}`);
+                }
+                if (d.phone)
+                    parts.push(`ph: ${d.phone}`);
+                if (d.email)
+                    parts.push(`email: ${d.email}`);
+                if (isNamedInMsg && d.relationshipNotes) {
+                    // Include notes only if this contact is mentioned
+                    const notePreview = d.relationshipNotes.slice(0, 300);
+                    parts.push(`notes: ${notePreview}`);
+                }
+                lines.push(`• ${parts.join(' — ')} [id:${doc.id}]`);
+            }
+            if (lines.length > 0) {
+                contactContext = `\n\nKnown contacts (use contactId from [id:…] when calling contact tools):\n${lines.join('\n')}`;
+            }
+        }
+    }
+    catch {
+        // Non-fatal — proceed without contact context
+    }
+    const systemPrompt = (0, ariaSystem_1.buildAriaSystemPrompt)(userTimezone, userDisplayName) + contactContext;
     const trimmedHistory = history.slice(-MAX_HISTORY);
     const apiKey = anthropicApiKey.value();
     if (!apiKey) {

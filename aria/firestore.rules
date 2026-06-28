@@ -76,6 +76,18 @@ service cloud.firestore {
       match /notificationTokens/{tokenId} {
         allow read, write: if isAuthenticated() && isOwner(userId);
       }
+
+      // Contacts — read only by owner; writes via Action Engine (client reads allowed for UI)
+      match /contacts/{contactId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if false; // Cloud Functions (executeAction) only
+      }
+
+      // Relationship memory notes — read only by owner; writes via Action Engine
+      match /relationshipMemory/{memoryId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if false; // Cloud Functions (executeAction) only
+      }
     }
 
     // ── Activity Logs (Action Engine audit trail) ─────────────────

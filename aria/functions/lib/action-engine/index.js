@@ -23,4 +23,9 @@ require("./actions/DeleteTaskAction");
 require("./actions/DeleteReminderAction");
 require("./actions/UpdateTaskAction");
 require("./actions/UpdateReminderAction");
+require("./actions/CreateContactAction");
+require("./actions/UpdateContactAction");
+require("./actions/DeleteContactAction");
+require("./actions/AddRelationshipNoteAction");
+require("./actions/SearchContactsAction");
 //# sourceMappingURL=index.js.map

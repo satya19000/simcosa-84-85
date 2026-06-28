@@ -29,6 +29,35 @@ export interface Reminder {
   updatedAt: string
 }
 
+export type PreferredContactMethod = 'phone' | 'whatsapp' | 'email' | 'sms' | 'unknown'
+
+export interface Contact {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  role: string | null
+  organization: string | null
+  relationshipType: string | null
+  relationshipNotes: string | null
+  tags: string[]
+  preferredContactMethod: PreferredContactMethod
+  lastInteractionAt: string | null
+  userId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RelationshipMemory {
+  id: string
+  contactId: string
+  note: string
+  source: 'chat' | 'manual' | 'call' | 'meeting'
+  importance: 'low' | 'normal' | 'high'
+  userId: string
+  createdAt: string
+}
+
 export interface ActivityLog {
   id: string
   actionId: string

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LogOut, Bell, Globe, Shield, CreditCard, ChevronRight, Moon, Mic, BellOff } from 'lucide-react'
+import { LogOut, Bell, Globe, Shield, CreditCard, ChevronRight, Moon, Mic, BellOff, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { useAuthStore } from '@/store/authStore'
 import { auth } from '@/lib/firebase'
@@ -33,6 +34,7 @@ const settingsSections = [
 
 export default function Profile() {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermissionStatus>('default')
   const [notifLoading, setNotifLoading] = useState(false)
   const [notifMessage, setNotifMessage] = useState<string | null>(null)
@@ -119,6 +121,21 @@ export default function Profile() {
           </Card>
         </div>
       ))}
+
+      {/* Contacts shortcut */}
+      <button
+        onClick={() => navigate('/contacts')}
+        className="w-full flex items-center gap-3 glass border border-white/10 rounded-2xl px-4 py-3.5 hover:bg-white/5 transition-colors text-left"
+      >
+        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+          <Users className="w-4 h-4 text-emerald-400" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm text-white">Relationship Memory</p>
+          <p className="text-xs text-white/30">Contacts &amp; people ARIA knows about</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-white/20" />
+      </button>
 
       {/* Notifications */}
       <div>

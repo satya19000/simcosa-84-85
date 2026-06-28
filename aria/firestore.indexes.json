@@ -33,6 +33,28 @@
       ]
     },
     {
+      "collectionGroup": "contacts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "contacts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "relationshipMemory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contactId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "reminders",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

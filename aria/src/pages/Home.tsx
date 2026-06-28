@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, Plus, Bell, CheckSquare, Zap, Activity } from 'lucide-react'
+import { MessageSquare, Plus, Bell, CheckSquare, Zap, Activity, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/LoadingSkeleton'
 import { TaskCard } from '@/components/tasks/TaskCard'
@@ -40,6 +40,13 @@ function toolNameLabel(toolName: string): string {
     completeTask: 'Task completed',
     deleteTask: 'Task deleted',
     deleteReminder: 'Reminder deleted',
+    updateTask: 'Task updated',
+    updateReminder: 'Reminder updated',
+    createContact: 'Contact saved',
+    updateContact: 'Contact updated',
+    deleteContact: 'Contact deleted',
+    addRelationshipNote: 'Note added',
+    searchContacts: 'Contacts searched',
   }
   return labels[toolName] ?? toolName
 }
@@ -192,11 +199,12 @@ export default function Home() {
       {/* Quick actions */}
       <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible">
         <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium mb-3">Quick Actions</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           {[
             { icon: MessageSquare, label: 'Ask ARIA', color: 'from-[#7C3AED] to-[#5B21B6]', onClick: () => navigate('/chat') },
             { icon: Plus, label: 'Add Task', color: 'from-[#7C3AED]/30 to-[#7C3AED]/10', onClick: () => setShowTaskModal(true) },
             { icon: Bell, label: 'Remind Me', color: 'from-[#06B6D4]/30 to-[#06B6D4]/10', onClick: () => setShowReminderModal(true) },
+            { icon: Users, label: 'Contacts', color: 'from-emerald-500/30 to-emerald-500/10', onClick: () => navigate('/contacts') },
           ].map(({ icon: Icon, label, color, onClick }) => (
             <button
               key={label}
