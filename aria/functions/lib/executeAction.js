@@ -33,15 +33,35 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
+exports.executeAction = void 0;
+const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
-// Initialize Firebase Admin once
-admin.initializeApp();
-var chat_1 = require("./chat");
-Object.defineProperty(exports, "chatWithAria", { enumerable: true, get: function () { return chat_1.chatWithAria; } });
-var voice_1 = require("./voice");
-Object.defineProperty(exports, "transcribeAudio", { enumerable: true, get: function () { return voice_1.transcribeAudio; } });
-Object.defineProperty(exports, "synthesizeSpeech", { enumerable: true, get: function () { return voice_1.synthesizeSpeech; } });
-var executeAction_1 = require("./executeAction");
-Object.defineProperty(exports, "executeAction", { enumerable: true, get: function () { return executeAction_1.executeAction; } });
-//# sourceMappingURL=index.js.map
+const ActionEngine_1 = require("./action-engine/ActionEngine");
+// Importing the index ensures all built-in actions are registered before any call arrives.
+require("./action-engine");
+/**
+ * Universal action execution endpoint.
+ * Claude sends tool_name + args; this function routes through the Action Engine.
+ * Claude NEVER writes to Firestore directly — all writes go through here.
+ */
+exports.executeAction = (0, https_1.onCall)({ timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'Authentication required.');
+    }
+    const { toolName, args } = request.data;
+    if (!toolName || typeof toolName !== 'string') {
+        throw new https_1.HttpsError('invalid-argument', 'toolName must be a non-empty string.');
+    }
+    if (!args || typeof args !== 'object' || Array.isArray(args)) {
+        throw new https_1.HttpsError('invalid-argument', 'args must be a plain object.');
+    }
+    const result = await ActionEngine_1.ActionEngine.run({
+        toolName,
+        args,
+        userId: request.auth.uid,
+        userDisplayName: request.auth.token.name,
+        db: admin.firestore(),
+    });
+    return result;
+});
+//# sourceMappingURL=executeAction.js.map

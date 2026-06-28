@@ -5,3 +5,4 @@ admin.initializeApp()
 
 export { chatWithAria } from './chat'
 export { transcribeAudio, synthesizeSpeech } from './voice'
+export { executeAction } from './executeAction'

@@ -73,6 +73,14 @@ service cloud.firestore {
       }
     }
 
+    // ── Activity Logs (Action Engine audit trail) ─────────────────
+    // Written exclusively by Cloud Functions (firebase-admin bypasses rules).
+    // Users may read their own logs; no client writes allowed.
+    match /activityLogs/{logId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow write: if false; // Cloud Functions (admin SDK) only
+    }
+
     // ── Deny everything else ─────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
