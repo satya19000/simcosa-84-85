@@ -88,6 +88,12 @@ service cloud.firestore {
         allow read: if isAuthenticated() && isOwner(userId);
         allow write: if false; // Cloud Functions (executeAction) only
       }
+
+      // Daily briefings — written by generateDailyBriefing Cloud Function
+      match /briefings/{briefingId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if false; // Cloud Functions only
+      }
     }
 
     // ── Activity Logs (Action Engine audit trail) ─────────────────

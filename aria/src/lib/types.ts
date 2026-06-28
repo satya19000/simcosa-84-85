@@ -108,6 +108,19 @@ export interface ChatSession {
   lastMessage?: string
 }
 
+export interface BriefingSection {
+  heading: string
+  body: string
+}
+
+export interface Briefing {
+  briefingId: string
+  summary: string
+  sections: BriefingSection[]
+  generatedAt: string
+  userId: string
+}
+
 export interface ChatWithAriaRequest {
   message: string
   sessionId: string

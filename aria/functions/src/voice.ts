@@ -19,14 +19,32 @@ export const transcribeAudio = onCall(
       throw new HttpsError('invalid-argument', 'Audio data is required.')
     }
 
-    // TODO Phase 3:
-    // const openai = new OpenAI({ apiKey: openaiApiKey.value() })
-    // const buf = Buffer.from(request.data.audioBase64, 'base64')
-    // const file = new File([buf], 'audio.webm', { type: request.data.mimeType })
-    // const tx = await openai.audio.transcriptions.create({ file, model: 'whisper-1' })
-    // return { transcript: tx.text, confidence: 1 }
+    const apiKey = openaiApiKey.value()
+    if (!apiKey) {
+      throw new HttpsError('failed-precondition', 'OpenAI API key not configured.')
+    }
 
-    return { transcript: '', confidence: 0 }
+    const buf = Buffer.from(request.data.audioBase64, 'base64')
+    const mimeType = request.data.mimeType ?? 'audio/webm'
+    const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+
+    const formData = new FormData()
+    formData.append('file', new Blob([buf], { type: mimeType }), `audio.${ext}`)
+    formData.append('model', 'whisper-1')
+
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: formData,
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      throw new HttpsError('internal', `Whisper API error: ${errText.slice(0, 200)}`)
+    }
+
+    const json = await res.json() as { text: string }
+    return { transcript: json.text ?? '', confidence: 1 }
   }
 )
 

@@ -1,14 +1,21 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Mic, MicOff, Sparkles, Square, AlertCircle } from 'lucide-react'
+import { Send, Mic, MicOff, Sparkles, Square, AlertCircle, Volume2 } from 'lucide-react'
+import { httpsCallable } from 'firebase/functions'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/store/authStore'
 import { useAriaStore } from '@/store/ariaStore'
 import { sendMessageToAria, subscribeToMessages, ensureChatSession } from '@/lib/chatService'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
+import { voiceManager } from '@/lib/voice/VoiceManager'
+import { functions } from '@/lib/firebase'
 import type { ChatMessage } from '@/lib/types'
 import type { Unsubscribe } from 'firebase/firestore'
+
+const transcribeAudioFn = httpsCallable<{ audioBase64: string; mimeType: string }, { transcript: string; confidence: number }>(
+  functions, 'transcribeAudio'
+)
 
 const SESSION_ID = 'default' // Phase 3: multi-session support
 
@@ -23,6 +30,15 @@ export default function Chat() {
   const unsubRef = useRef<Unsubscribe | null>(null)
 
   const { recordingState, startRecording, stopRecording, cancelRecording, error: voiceError } = useVoiceRecorder()
+  const [transcribing, setTranscribing] = useState(false)
+  const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(false)
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('aria_voice_replies')
+      if (stored !== null) setVoiceRepliesEnabled(stored === 'true')
+    } catch { /* ignore */ }
+  }, [])
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -54,14 +70,22 @@ export default function Chat() {
     if (!text.trim() || sending || !user) return
     setSending(true)
     try {
-      await sendMessageToAria(text, SESSION_ID, buildHistory())
+      const result = await sendMessageToAria(text, SESSION_ID, buildHistory())
+      if (voiceRepliesEnabled && result?.reply && voiceManager.isSupported()) {
+        try {
+          const rate = parseFloat(localStorage.getItem('aria_speech_rate') ?? '1')
+          const pitch = parseFloat(localStorage.getItem('aria_speech_pitch') ?? '1')
+          const voiceName = localStorage.getItem('aria_browser_voice') ?? ''
+          voiceManager.speak(result.reply, { rate, pitch, voiceName })
+        } catch { /* non-fatal */ }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to send message'
       setFirestoreError(msg)
     } finally {
       setSending(false)
     }
-  }, [sending, user, buildHistory])
+  }, [sending, user, buildHistory, voiceRepliesEnabled])
 
   const handleSend = async () => {
     const text = input.trim()
@@ -79,21 +103,32 @@ export default function Chat() {
 
   const handleVoiceToggle = async () => {
     if (recordingState === 'idle') {
+      voiceManager.stop()
       setVoiceState('listening')
       await startRecording()
     } else if (recordingState === 'recording') {
       setVoiceState('processing')
       const base64 = await stopRecording()
-      setVoiceState('idle')
       if (base64) {
-        // Phase 3: call transcribeAudio Cloud Function with base64
-        // For now, show a placeholder in the input
-        setInput('[Voice message — Whisper STT connects in Phase 3]')
+        setTranscribing(true)
+        try {
+          const res = await transcribeAudioFn({ audioBase64: base64, mimeType: 'audio/webm' })
+          const transcript = res.data.transcript.trim()
+          if (transcript) {
+            setInput(transcript)
+          }
+        } catch {
+          // Fall back gracefully — user can type
+        } finally {
+          setTranscribing(false)
+        }
       }
+      setVoiceState('idle')
     }
   }
 
   const isVoiceActive = recordingState === 'recording' || voiceState === 'listening'
+  const isTranscribing = transcribing || recordingState === 'processing'
 
   return (
     <div className="flex flex-col h-[calc(100vh-96px)] safe-top">
@@ -106,10 +141,22 @@ export default function Chat() {
             </div>
             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-[#0A0E27]" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-base font-semibold text-white">ARIA</h1>
             <p className="text-xs text-emerald-400">● Online · Claude AI</p>
           </div>
+          <button
+            onClick={() => {
+              const next = !voiceRepliesEnabled
+              setVoiceRepliesEnabled(next)
+              localStorage.setItem('aria_voice_replies', String(next))
+              if (!next) voiceManager.stop()
+            }}
+            className={`p-2 rounded-xl border transition-all ${voiceRepliesEnabled ? 'bg-[#7C3AED]/20 border-[#7C3AED]/40 text-[#7C3AED]' : 'border-white/10 text-white/30 hover:text-white/50'}`}
+            aria-label="Toggle voice replies"
+          >
+            <Volume2 className="w-4 h-4" />
+          </button>
         </div>
         {firestoreError && (
           <div className="mt-2 flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
@@ -224,9 +271,9 @@ export default function Chat() {
         <div ref={bottomRef} className="h-1" />
       </div>
 
-      {/* Voice recording banner */}
+      {/* Voice state banner */}
       <AnimatePresence>
-        {isVoiceActive && (
+        {(isVoiceActive || isTranscribing) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -238,13 +285,14 @@ export default function Chat() {
               animate={{ opacity: [1, 0.3, 1] }}
               transition={{ duration: 1, repeat: Infinity }}
             />
-            <span className="text-sm text-[#06B6D4] flex-1">Listening… tap stop when done</span>
-            <button
-              onClick={cancelRecording}
-              className="text-white/40 hover:text-white/60"
-            >
-              <Square className="w-4 h-4 fill-current" />
-            </button>
+            <span className="text-sm text-[#06B6D4] flex-1">
+              {isTranscribing ? 'Transcribing…' : 'Listening… tap stop when done'}
+            </span>
+            {isVoiceActive && (
+              <button onClick={cancelRecording} className="text-white/40 hover:text-white/60">
+                <Square className="w-4 h-4 fill-current" />
+              </button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
