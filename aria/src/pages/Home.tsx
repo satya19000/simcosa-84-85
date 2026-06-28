@@ -7,7 +7,9 @@ import { Skeleton } from '@/components/ui/LoadingSkeleton'
 import { TaskCard } from '@/components/tasks/TaskCard'
 import { ReminderCard } from '@/components/reminders/ReminderCard'
 import { TaskQuickAddModal } from '@/components/tasks/TaskQuickAddModal'
+import { TaskEditModal } from '@/components/tasks/TaskEditModal'
 import { ReminderQuickAddModal } from '@/components/reminders/ReminderQuickAddModal'
+import { ReminderEditModal } from '@/components/reminders/ReminderEditModal'
 import { subscribeToTasks, completeTask, deleteTask } from '@/lib/taskService'
 import { subscribeToReminders, deleteReminder } from '@/lib/reminderService'
 import { subscribeToActivityLogs } from '@/lib/dashboardService'
@@ -54,6 +56,8 @@ export default function Home() {
   const [logs, setLogs] = useState<ActivityLog[]>([])
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [showReminderModal, setShowReminderModal] = useState(false)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null)
 
   const unsubTasksRef = useRef<Unsubscribe | null>(null)
   const unsubRemindersRef = useRef<Unsubscribe | null>(null)
@@ -90,6 +94,43 @@ export default function Home() {
   const upcomingReminders = reminders.filter(
     (r) => !isToday(r.scheduledAt) && new Date(r.scheduledAt) > new Date()
   )
+
+  const now = new Date()
+  const overdueTasks = pendingTasks.filter((t) => t.dueAt && new Date(t.dueAt) < now)
+  const dueSoon = pendingTasks.filter((t) => {
+    if (!t.dueAt) return false
+    const d = new Date(t.dueAt)
+    return d > now && d < new Date(now.getTime() + 2 * 60 * 60 * 1000)
+  })
+  const remindersInNext2h = reminders.filter((r) => {
+    const d = new Date(r.scheduledAt)
+    return d > now && d < new Date(now.getTime() + 2 * 60 * 60 * 1000)
+  })
+  const highPriorityPending = pendingTasks.filter(
+    (t) => t.priority === 'high' || t.priority === 'critical'
+  )
+
+  function buildBriefing(): string {
+    const parts: string[] = []
+    if (overdueTasks.length > 0) {
+      parts.push(`${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`)
+    }
+    if (dueSoon.length > 0) {
+      parts.push(`${dueSoon.length} task${dueSoon.length > 1 ? 's' : ''} due in the next 2 hours`)
+    }
+    if (remindersInNext2h.length > 0) {
+      parts.push(`${remindersInNext2h.length} reminder${remindersInNext2h.length > 1 ? 's' : ''} coming up soon`)
+    }
+    if (highPriorityPending.length > 0 && parts.length === 0) {
+      parts.push(`${highPriorityPending.length} high-priority task${highPriorityPending.length > 1 ? 's' : ''} pending`)
+    }
+    if (parts.length === 0) return ''
+    if (parts.length === 1) return `You have ${parts[0]}.`
+    const last = parts.pop()
+    return `You have ${parts.join(', ')} and ${last}.`
+  }
+
+  const briefing = buildBriefing()
 
   return (
     <div className="px-4 pt-6 pb-8 space-y-6 safe-top overflow-y-auto h-[calc(100vh-96px)]">
@@ -139,8 +180,17 @@ export default function Home() {
         </Card>
       </motion.div>
 
+      {/* Secretary briefing */}
+      {!tasksLoading && !remindersLoading && briefing && (
+        <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible">
+          <Card className="px-4 py-3 border-l-2 border-l-[#7C3AED]">
+            <p className="text-xs text-white/70 leading-relaxed">{briefing}</p>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Quick actions */}
-      <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible">
+      <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible">
         <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium mb-3">Quick Actions</p>
         <div className="grid grid-cols-3 gap-2">
           {[
@@ -178,7 +228,7 @@ export default function Home() {
           ) : (
             <div className="space-y-2">
               {todayReminders.slice(0, 3).map((r) => (
-                <ReminderCard key={r.id} reminder={r} onDelete={deleteReminder} />
+                <ReminderCard key={r.id} reminder={r} onDelete={deleteReminder} onEdit={setEditingReminder} />
               ))}
             </div>
           )}
@@ -189,7 +239,7 @@ export default function Home() {
       {!remindersLoading && todayReminders.length === 0 && upcomingReminders.length > 0 && (
         <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible">
           <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium mb-3">Upcoming</p>
-          <ReminderCard reminder={upcomingReminders[0]} onDelete={deleteReminder} />
+          <ReminderCard reminder={upcomingReminders[0]} onDelete={deleteReminder} onEdit={setEditingReminder} />
           {upcomingReminders.length > 1 && (
             <button
               onClick={() => navigate('/calendar')}
@@ -217,7 +267,7 @@ export default function Home() {
           ) : (
             <div className="space-y-2">
               {pendingTasks.slice(0, 3).map((t) => (
-                <TaskCard key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} />
+                <TaskCard key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} onEdit={setEditingTask} />
               ))}
             </div>
           )}
@@ -269,6 +319,8 @@ export default function Home() {
 
       <TaskQuickAddModal isOpen={showTaskModal} onClose={() => setShowTaskModal(false)} />
       <ReminderQuickAddModal isOpen={showReminderModal} onClose={() => setShowReminderModal(false)} />
+      <TaskEditModal task={editingTask} onClose={() => setEditingTask(null)} />
+      <ReminderEditModal reminder={editingReminder} onClose={() => setEditingReminder(null)} />
     </div>
   )
 }

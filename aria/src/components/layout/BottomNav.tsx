@@ -1,13 +1,13 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Home, MessageCircle, Calendar, FolderLock, User } from 'lucide-react'
+import { Home, MessageCircle, Calendar, CheckSquare, User } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', icon: Home, label: 'Home' },
   { to: '/chat', icon: MessageCircle, label: 'Chat' },
+  { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
-  { to: '/vault', icon: FolderLock, label: 'Vault' },
   { to: '/profile', icon: User, label: 'Profile' },
 ]
 

@@ -1,9 +1,16 @@
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { LogOut, Bell, Globe, Shield, CreditCard, ChevronRight, Moon, Mic } from 'lucide-react'
+import { LogOut, Bell, Globe, Shield, CreditCard, ChevronRight, Moon, Mic, BellOff } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { useAuthStore } from '@/store/authStore'
 import { auth } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
+import {
+  getNotificationPermissionStatus,
+  requestPermissionAndRegister,
+  sendTestNotification,
+  type NotificationPermissionStatus,
+} from '@/lib/notificationService'
 
 const settingsSections = [
   {
@@ -26,9 +33,33 @@ const settingsSections = [
 
 export default function Profile() {
   const { user } = useAuthStore()
+  const [permissionStatus, setPermissionStatus] = useState<NotificationPermissionStatus>('default')
+  const [notifLoading, setNotifLoading] = useState(false)
+  const [notifMessage, setNotifMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    setPermissionStatus(getNotificationPermissionStatus())
+  }, [])
 
   const handleSignOut = async () => {
     await signOut(auth)
+  }
+
+  async function handleEnableNotifications() {
+    setNotifLoading(true)
+    setNotifMessage(null)
+    const result = await requestPermissionAndRegister()
+    setNotifMessage(result.message)
+    setPermissionStatus(getNotificationPermissionStatus())
+    setNotifLoading(false)
+  }
+
+  async function handleTestNotification() {
+    setNotifLoading(true)
+    setNotifMessage(null)
+    const result = await sendTestNotification()
+    setNotifMessage(result.message)
+    setNotifLoading(false)
   }
 
   return (
@@ -88,6 +119,47 @@ export default function Profile() {
           </Card>
         </div>
       ))}
+
+      {/* Notifications */}
+      <div>
+        <h2 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Notifications</h2>
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#06B6D4]/10 flex items-center justify-center flex-shrink-0">
+              {permissionStatus === 'granted' ? (
+                <Bell className="w-4 h-4 text-[#06B6D4]" />
+              ) : (
+                <BellOff className="w-4 h-4 text-white/30" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-white">Push Notifications</p>
+              <p className="text-xs text-white/30 capitalize">{permissionStatus}</p>
+            </div>
+            {permissionStatus !== 'denied' && permissionStatus !== 'unsupported' && (
+              <button
+                onClick={handleEnableNotifications}
+                disabled={notifLoading || permissionStatus === 'granted'}
+                className="text-xs text-[#06B6D4] hover:text-[#22D3EE] disabled:opacity-50 transition-colors flex-shrink-0"
+              >
+                {notifLoading ? '…' : permissionStatus === 'granted' ? 'Enabled' : 'Enable'}
+              </button>
+            )}
+          </div>
+          {permissionStatus === 'granted' && (
+            <button
+              onClick={handleTestNotification}
+              disabled={notifLoading}
+              className="w-full text-xs text-white/50 hover:text-white/80 py-2 rounded-lg bg-white/5 border border-white/10 transition-colors disabled:opacity-50"
+            >
+              {notifLoading ? 'Sending…' : 'Send Test Notification'}
+            </button>
+          )}
+          {notifMessage && (
+            <p className="text-[11px] text-white/50">{notifMessage}</p>
+          )}
+        </Card>
+      </div>
 
       {/* Sign out */}
       <button

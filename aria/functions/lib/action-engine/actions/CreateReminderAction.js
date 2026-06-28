@@ -28,6 +28,7 @@ class CreateReminderAction {
                 recurrence: args.recurrence ?? 'none',
                 notes: args.notes ?? null,
                 completed: false,
+                notified: false,
                 userId: ctx.userId,
                 createdAt: now,
                 updatedAt: now,

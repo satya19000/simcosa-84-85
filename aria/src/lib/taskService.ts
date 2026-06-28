@@ -53,3 +53,15 @@ export async function deleteTask(taskId: string): Promise<void> {
   const result = await executeActionFn({ toolName: 'deleteTask', args: { taskId } })
   if (!result.data.success) throw new Error(result.data.message)
 }
+
+export async function updateTask(args: {
+  taskId: string
+  title?: string
+  notes?: string | null
+  category?: string | null
+  priority?: TaskPriority
+  dueAt?: string | null
+}): Promise<void> {
+  const result = await executeActionFn({ toolName: 'updateTask', args })
+  if (!result.data.success) throw new Error(result.data.message)
+}

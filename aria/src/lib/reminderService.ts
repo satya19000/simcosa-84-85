@@ -47,3 +47,14 @@ export async function deleteReminder(reminderId: string): Promise<void> {
   const result = await executeActionFn({ toolName: 'deleteReminder', args: { reminderId } })
   if (!result.data.success) throw new Error(result.data.message)
 }
+
+export async function updateReminder(args: {
+  reminderId: string
+  title?: string
+  notes?: string | null
+  scheduledAt?: string
+  recurrence?: ReminderRecurrence
+}): Promise<void> {
+  const result = await executeActionFn({ toolName: 'updateReminder', args })
+  if (!result.data.success) throw new Error(result.data.message)
+}

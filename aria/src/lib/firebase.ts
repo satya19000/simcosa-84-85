@@ -26,16 +26,25 @@ export const storage: FirebaseStorage = getStorage(app)
 export const functions: Functions = getFunctions(app)
 
 let analytics: Analytics | null = null
-let messaging: Messaging | null = null
+let _messaging: Messaging | null = null
+let _messagingPromise: Promise<Messaging | null> | null = null
 
 if (typeof window !== 'undefined') {
   analytics = getAnalytics(app)
-  isSupported().then((supported) => {
-    if (supported) {
-      messaging = getMessaging(app)
-    }
-  })
 }
 
-export { analytics, messaging }
+export async function getMessagingAsync(): Promise<Messaging | null> {
+  if (_messaging) return _messaging
+  if (_messagingPromise) return _messagingPromise
+  _messagingPromise = isSupported().then((supported) => {
+    if (supported) {
+      _messaging = getMessaging(app)
+      return _messaging
+    }
+    return null
+  })
+  return _messagingPromise
+}
+
+export { analytics }
 export default app

@@ -21,4 +21,6 @@ require("./actions/CreateReminderAction");
 require("./actions/CompleteTaskAction");
 require("./actions/DeleteTaskAction");
 require("./actions/DeleteReminderAction");
+require("./actions/UpdateTaskAction");
+require("./actions/UpdateReminderAction");
 //# sourceMappingURL=index.js.map

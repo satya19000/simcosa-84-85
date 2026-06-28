@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Repeat, Trash2 } from 'lucide-react'
+import { Bell, Repeat, Trash2, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Reminder } from '@/lib/types'
 
@@ -29,9 +29,10 @@ function isPast(isoString: string): boolean {
 interface ReminderCardProps {
   reminder: Reminder
   onDelete: (reminderId: string) => Promise<void>
+  onEdit?: (reminder: Reminder) => void
 }
 
-export function ReminderCard({ reminder, onDelete }: ReminderCardProps) {
+export function ReminderCard({ reminder, onDelete, onEdit }: ReminderCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,8 +99,17 @@ export function ReminderCard({ reminder, onDelete }: ReminderCardProps) {
           {error && <p className="text-[10px] text-red-400 mt-1">{error}</p>}
         </div>
 
-        {/* Delete */}
-        <div className="flex-shrink-0">
+        {/* Actions */}
+        <div className="flex-shrink-0 flex items-center gap-1">
+          {onEdit && !past && (
+            <button
+              onClick={() => onEdit(reminder)}
+              className="text-white/20 hover:text-[#06B6D4] transition-colors p-1"
+              aria-label="Edit reminder"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
           <AnimatePresence mode="wait">
             {confirmDelete ? (
               <motion.div
@@ -141,3 +151,4 @@ export function ReminderCard({ reminder, onDelete }: ReminderCardProps) {
     </motion.div>
   )
 }
+

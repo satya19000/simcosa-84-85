@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Bell, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Bell, Plus, CheckSquare } from 'lucide-react'
 import { Skeleton } from '@/components/ui/LoadingSkeleton'
 import { ReminderCard } from '@/components/reminders/ReminderCard'
+import { ReminderEditModal } from '@/components/reminders/ReminderEditModal'
+import { TaskCard } from '@/components/tasks/TaskCard'
+import { TaskEditModal } from '@/components/tasks/TaskEditModal'
 import { ReminderQuickAddModal } from '@/components/reminders/ReminderQuickAddModal'
 import { subscribeToReminders, deleteReminder } from '@/lib/reminderService'
+import { subscribeToTasks, completeTask, deleteTask } from '@/lib/taskService'
 import { useAuthStore } from '@/store/authStore'
-import type { Reminder } from '@/lib/types'
+import type { Reminder, Task } from '@/lib/types'
 import type { Unsubscribe } from 'firebase/firestore'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -30,20 +34,33 @@ export default function Calendar() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth())
   const [selectedDay, setSelectedDay] = useState(today.getDate())
   const [reminders, setReminders] = useState<Reminder[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
 
   const unsubRef = useRef<Unsubscribe | null>(null)
+  const unsubTasksRef = useRef<Unsubscribe | null>(null)
 
   useEffect(() => {
     if (!user) return
     setLoading(true)
+    let remindersLoaded = false
+    let tasksLoaded = false
+    const checkDone = () => { if (remindersLoaded && tasksLoaded) setLoading(false) }
+
     unsubRef.current = subscribeToReminders(
       user.uid,
-      (r) => { setReminders(r); setLoading(false) },
-      () => setLoading(false)
+      (r) => { setReminders(r); remindersLoaded = true; checkDone() },
+      () => { remindersLoaded = true; checkDone() }
     )
-    return () => { unsubRef.current?.() }
+    unsubTasksRef.current = subscribeToTasks(
+      user.uid,
+      (t) => { setTasks(t); tasksLoaded = true; checkDone() },
+      () => { tasksLoaded = true; checkDone() }
+    )
+    return () => { unsubRef.current?.(); unsubTasksRef.current?.() }
   }, [user])
 
   function prevMonth() {
@@ -61,21 +78,25 @@ export default function Calendar() {
   const gridCells = firstDayOfMonth + daysInMonth
   const totalCells = Math.ceil(gridCells / 7) * 7
 
-  // Precompute which days in this month have reminders
+  // Precompute which days in this month have reminders or tasks
   const reminderDaySet = useMemo(() => {
     const set = new Set<string>()
     for (const r of reminders) {
       const d = new Date(r.scheduledAt)
-      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
-        set.add(`${d.getDate()}`)
-      }
+      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) set.add(`${d.getDate()}`)
+    }
+    for (const t of tasks) {
+      if (!t.dueAt) continue
+      const d = new Date(t.dueAt)
+      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) set.add(`${d.getDate()}`)
     }
     return set
-  }, [reminders, currentYear, currentMonth])
+  }, [reminders, tasks, currentYear, currentMonth])
 
-  // Selected day's reminders
+  // Selected day's reminders and tasks
   const selectedDate = new Date(currentYear, currentMonth, selectedDay)
   const selectedReminders = reminders.filter((r) => sameDay(new Date(r.scheduledAt), selectedDate))
+  const selectedTasks = tasks.filter((t) => t.dueAt && sameDay(new Date(t.dueAt), selectedDate))
 
   // Next 7 days groups
   const next7Groups = useMemo(() => {
@@ -162,12 +183,12 @@ export default function Calendar() {
           </div>
         </div>
 
-        {/* Selected day reminders */}
+        {/* Selected day panel */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Bell className="w-3.5 h-3.5 text-[#06B6D4]" />
             <p className="text-xs font-medium text-white/70">
-              {sameDay(selectedDate, today) ? "Today's Reminders" : `${MONTHS[currentMonth].slice(0, 3)} ${selectedDay}`}
+              {sameDay(selectedDate, today) ? "Today" : `${MONTHS[currentMonth].slice(0, 3)} ${selectedDay}`}
             </p>
           </div>
 
@@ -175,9 +196,9 @@ export default function Calendar() {
             <div className="space-y-2">
               {[0, 1].map((i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}
             </div>
-          ) : selectedReminders.length === 0 ? (
+          ) : selectedReminders.length === 0 && selectedTasks.length === 0 ? (
             <div className="glass border border-white/5 rounded-2xl px-4 py-6 text-center">
-              <p className="text-xs text-white/30">No reminders for this day</p>
+              <p className="text-xs text-white/30">Nothing scheduled for this day</p>
               <button
                 onClick={() => setShowModal(true)}
                 className="mt-2 text-[10px] text-[#06B6D4] hover:text-[#22D3EE] transition-colors"
@@ -188,8 +209,21 @@ export default function Calendar() {
           ) : (
             <div className="space-y-2">
               {selectedReminders.map((r) => (
-                <ReminderCard key={r.id} reminder={r} onDelete={deleteReminder} />
+                <ReminderCard key={r.id} reminder={r} onDelete={deleteReminder} onEdit={setEditingReminder} />
               ))}
+              {selectedTasks.length > 0 && (
+                <>
+                  {selectedReminders.length > 0 && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <CheckSquare className="w-3 h-3 text-[#7C3AED]" />
+                      <span className="text-[10px] text-white/40 uppercase tracking-wider">Tasks due</span>
+                    </div>
+                  )}
+                  {selectedTasks.map((t) => (
+                    <TaskCard key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} onEdit={setEditingTask} />
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -235,6 +269,8 @@ export default function Calendar() {
       </div>
 
       <ReminderQuickAddModal isOpen={showModal} onClose={() => setShowModal(false)} />
+      <ReminderEditModal reminder={editingReminder} onClose={() => setEditingReminder(null)} />
+      <TaskEditModal task={editingTask} onClose={() => setEditingTask(null)} />
     </div>
   )
 }

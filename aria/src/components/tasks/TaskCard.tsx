@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, Circle, Trash2, Tag, Calendar, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, Circle, Trash2, Tag, Calendar, AlertTriangle, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Task } from '@/lib/types'
 
@@ -23,9 +23,10 @@ interface TaskCardProps {
   task: Task
   onComplete: (taskId: string) => Promise<void>
   onDelete: (taskId: string) => Promise<void>
+  onEdit?: (task: Task) => void
 }
 
-export function TaskCard({ task, onComplete, onDelete }: TaskCardProps) {
+export function TaskCard({ task, onComplete, onDelete, onEdit }: TaskCardProps) {
   const [completing, setCompleting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -133,8 +134,18 @@ export function TaskCard({ task, onComplete, onDelete }: TaskCardProps) {
           )}
         </div>
 
-        {/* Delete */}
+        {/* Actions */}
         <div className="flex-shrink-0 flex items-center gap-1">
+          {onEdit && !task.completed && (
+            <button
+              onClick={() => onEdit(task)}
+              className="text-white/20 hover:text-[#7C3AED] transition-colors p-1"
+              aria-label="Edit task"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {/* Delete */}
           <AnimatePresence mode="wait">
             {confirmDelete ? (
               <motion.div

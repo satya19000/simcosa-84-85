@@ -33,19 +33,38 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
+exports.sendTestNotification = void 0;
 const admin = __importStar(require("firebase-admin"));
-// Initialize Firebase Admin once
-admin.initializeApp();
-var chat_1 = require("./chat");
-Object.defineProperty(exports, "chatWithAria", { enumerable: true, get: function () { return chat_1.chatWithAria; } });
-var voice_1 = require("./voice");
-Object.defineProperty(exports, "transcribeAudio", { enumerable: true, get: function () { return voice_1.transcribeAudio; } });
-Object.defineProperty(exports, "synthesizeSpeech", { enumerable: true, get: function () { return voice_1.synthesizeSpeech; } });
-var executeAction_1 = require("./executeAction");
-Object.defineProperty(exports, "executeAction", { enumerable: true, get: function () { return executeAction_1.executeAction; } });
-var notifications_1 = require("./notifications");
-Object.defineProperty(exports, "sendTestNotification", { enumerable: true, get: function () { return notifications_1.sendTestNotification; } });
-var processDueReminders_1 = require("./processDueReminders");
-Object.defineProperty(exports, "processDueReminders", { enumerable: true, get: function () { return processDueReminders_1.processDueReminders; } });
-//# sourceMappingURL=index.js.map
+const https_1 = require("firebase-functions/v2/https");
+exports.sendTestNotification = (0, https_1.onCall)(async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError('unauthenticated', 'Must be signed in.');
+    const userId = request.auth.uid;
+    const tokensSnap = await admin.firestore()
+        .collection('users').doc(userId)
+        .collection('notificationTokens')
+        .get();
+    if (tokensSnap.empty) {
+        throw new https_1.HttpsError('not-found', 'No notification tokens registered.');
+    }
+    const tokens = tokensSnap.docs.map((d) => d.data().token).filter(Boolean);
+    if (tokens.length === 0)
+        throw new https_1.HttpsError('not-found', 'No valid tokens found.');
+    const message = {
+        tokens,
+        notification: {
+            title: 'ARIA',
+            body: 'Notifications are working! 🎉',
+        },
+        webpush: {
+            notification: {
+                icon: '/icons/icon-192.png',
+                badge: '/icons/icon-72.png',
+            },
+        },
+    };
+    const result = await admin.messaging().sendEachForMulticast(message);
+    const successCount = result.responses.filter((r) => r.success).length;
+    return { sent: successCount, total: tokens.length };
+});
+//# sourceMappingURL=notifications.js.map

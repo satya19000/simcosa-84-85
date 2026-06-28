@@ -71,6 +71,11 @@ service cloud.firestore {
       match /health/{doc} {
         allow read, write: if isAuthenticated() && isOwner(userId);
       }
+
+      // FCM notification tokens
+      match /notificationTokens/{tokenId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
     }
 
     // ── Activity Logs (Action Engine audit trail) ─────────────────
