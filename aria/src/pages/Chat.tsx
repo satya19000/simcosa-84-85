@@ -162,6 +162,27 @@ export default function Chat() {
                 }`}
               >
                 <p className="whitespace-pre-wrap">{msg.content}</p>
+                {msg.role === 'assistant' && msg.toolUsed && msg.tools && msg.tools.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {msg.tools.map((chip, i) => (
+                      <span
+                        key={i}
+                        className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                          chip.success
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                            : 'bg-red-500/20 text-red-400 border-red-500/30'
+                        }`}
+                      >
+                        {chip.success ? '✅' : '⚠️'}{' '}
+                        {chip.name === 'createTask'
+                          ? 'Task created'
+                          : chip.name === 'createReminder'
+                          ? 'Reminder set'
+                          : chip.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <p className="text-[10px] mt-1.5 opacity-40">
                   {msg.timestamp
                     ? msg.timestamp.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })

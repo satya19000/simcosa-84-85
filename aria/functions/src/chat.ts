@@ -1,15 +1,18 @@
-import { onCall, HttpsError, CallableRequest } from 'firebase-functions/v2/https'
+import { onCall, HttpsError, type CallableRequest } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import * as admin from 'firebase-admin'
 import Anthropic from '@anthropic-ai/sdk'
-import { ARIA_SYSTEM_PROMPT } from './prompts/ariaSystem'
-import type { ChatWithAriaRequest, ChatWithAriaResponse } from './types'
+import { buildAriaSystemPrompt } from './prompts/ariaSystem'
+import { validateISODatetime } from './tools/dateTimeResolver'
+import { ARIA_TOOLS, isAriaTool } from './tools/toolDefinitions'
+import { ActionEngine } from './action-engine'
+import type { ChatWithAriaRequest, ChatWithAriaResponse, ActionMetadata } from './types'
 
 const anthropicApiKey = defineSecret('ANTHROPIC_API_KEY')
 const MAX_HISTORY = 20
 
 export const chatWithAria = onCall(
-  { secrets: [anthropicApiKey], timeoutSeconds: 60, memory: '512MiB' },
+  { secrets: [anthropicApiKey], timeoutSeconds: 90, memory: '512MiB' },
   async (request: CallableRequest<ChatWithAriaRequest>): Promise<ChatWithAriaResponse> => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Authentication required.')
@@ -28,11 +31,26 @@ export const chatWithAria = onCall(
     const db = admin.firestore()
     const now = admin.firestore.Timestamp.now()
 
+    // Load user profile for timezone + display name personalisation
+    let userTimezone: string | undefined
+    let userDisplayName: string | undefined
+    try {
+      const profileSnap = await db.collection('users').doc(userId).get()
+      if (profileSnap.exists) {
+        const profileData = profileSnap.data()
+        userTimezone = profileData?.timezone as string | undefined
+        userDisplayName =
+          (profileData?.displayName as string | undefined) ??
+          (request.auth.token?.name as string | undefined)
+      } else {
+        userDisplayName = request.auth.token?.name as string | undefined
+      }
+    } catch {
+      userDisplayName = request.auth.token?.name as string | undefined
+    }
+
+    const systemPrompt = buildAriaSystemPrompt(userTimezone, userDisplayName)
     const trimmedHistory = history.slice(-MAX_HISTORY)
-    const claudeMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [
-      ...trimmedHistory,
-      { role: 'user', content: message },
-    ]
 
     const apiKey = anthropicApiKey.value()
     if (!apiKey) {
@@ -41,20 +59,119 @@ export const chatWithAria = onCall(
 
     const anthropic = new Anthropic({ apiKey })
 
-    const response = await anthropic.messages.create({
+    const claudeMessages: Anthropic.MessageParam[] = [
+      ...trimmedHistory.map((h) => ({ role: h.role as 'user' | 'assistant', content: h.content })),
+      { role: 'user', content: message },
+    ]
+
+    // First Claude call — include tools so Claude can detect intent
+    const firstResponse = await anthropic.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 1024,
-      system: ARIA_SYSTEM_PROMPT,
+      system: systemPrompt,
+      tools: ARIA_TOOLS,
       messages: claudeMessages,
     })
 
-    const reply = response.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { type: 'text'; text: string }).text)
-      .join('')
+    let reply: string
+    const actionResults: ActionMetadata[] = []
 
+    if (firstResponse.stop_reason === 'tool_use') {
+      const toolUseBlock = firstResponse.content.find(
+        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
+      )
+
+      if (toolUseBlock && isAriaTool(toolUseBlock.name)) {
+        const toolArgs = toolUseBlock.input as Record<string, unknown>
+
+        // Validate datetime fields before passing to Action Engine
+        let validationError: string | null = null
+        if (typeof toolArgs.scheduledAt === 'string') {
+          validationError = validateISODatetime(toolArgs.scheduledAt)
+        } else if (typeof toolArgs.dueAt === 'string') {
+          validationError = validateISODatetime(toolArgs.dueAt)
+        }
+
+        let toolResultContent: string
+
+        if (validationError) {
+          toolResultContent = JSON.stringify({ error: validationError })
+          actionResults.push({
+            name: toolUseBlock.name,
+            success: false,
+            actionId: toolUseBlock.id,
+            message: validationError,
+          })
+        } else {
+          const actionResult = await ActionEngine.run({
+            toolName: toolUseBlock.name,
+            args: toolArgs,
+            userId,
+            userDisplayName,
+            db,
+          })
+
+          toolResultContent = JSON.stringify({
+            success: actionResult.success,
+            message: actionResult.message,
+            data: actionResult.data,
+          })
+
+          actionResults.push({
+            name: toolUseBlock.name,
+            success: actionResult.success,
+            actionId: actionResult.actionId,
+            message: actionResult.message,
+          })
+        }
+
+        // Second Claude call with tool_result — get the final user-facing reply
+        const secondResponse = await anthropic.messages.create({
+          model: 'claude-opus-4-8',
+          max_tokens: 512,
+          system: systemPrompt,
+          messages: [
+            ...claudeMessages,
+            { role: 'assistant', content: firstResponse.content },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'tool_result' as const,
+                  tool_use_id: toolUseBlock.id,
+                  content: toolResultContent,
+                },
+              ],
+            },
+          ],
+        })
+
+        reply = secondResponse.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map((b) => b.text)
+          .join('')
+      } else {
+        // Unrecognised tool — fall back to any text in the response
+        reply = firstResponse.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map((b) => b.text)
+          .join('')
+      }
+    } else {
+      // Normal conversational response — no tool call needed
+      reply = firstResponse.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+    }
+
+    // Persist messages via admin SDK (bypasses Firestore rules that block client writes)
     const batch = db.batch()
-    const sessionRef = db.collection('users').doc(userId).collection('chatSessions').doc(sessionId)
+    const sessionRef = db
+      .collection('users')
+      .doc(userId)
+      .collection('chatSessions')
+      .doc(sessionId)
     const messagesRef = sessionRef.collection('messages')
 
     const userMsgRef = messagesRef.doc()
@@ -67,13 +184,18 @@ export const chatWithAria = onCall(
     })
 
     const ariaMsgRef = messagesRef.doc()
-    batch.set(ariaMsgRef, {
+    const ariaMsgDoc: Record<string, unknown> = {
       role: 'assistant',
       content: reply,
       timestamp: admin.firestore.Timestamp.fromMillis(now.toMillis() + 1),
       sessionId,
       userId,
-    })
+    }
+    if (actionResults.length > 0) {
+      ariaMsgDoc.toolUsed = true
+      ariaMsgDoc.tools = actionResults
+    }
+    batch.set(ariaMsgRef, ariaMsgDoc)
 
     batch.set(
       sessionRef,
@@ -88,6 +210,14 @@ export const chatWithAria = onCall(
 
     await batch.commit()
 
-    return { reply, sessionId, messageId: ariaMsgRef.id }
+    const response: ChatWithAriaResponse = {
+      reply,
+      sessionId,
+      messageId: ariaMsgRef.id,
+    }
+    if (actionResults.length > 0) {
+      response.actionResults = actionResults
+    }
+    return response
   }
 )

@@ -42,9 +42,12 @@ const params_1 = require("firebase-functions/params");
 const admin = __importStar(require("firebase-admin"));
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const ariaSystem_1 = require("./prompts/ariaSystem");
+const dateTimeResolver_1 = require("./tools/dateTimeResolver");
+const toolDefinitions_1 = require("./tools/toolDefinitions");
+const action_engine_1 = require("./action-engine");
 const anthropicApiKey = (0, params_1.defineSecret)('ANTHROPIC_API_KEY');
 const MAX_HISTORY = 20;
-exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeoutSeconds: 60, memory: '512MiB' }, async (request) => {
+exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeoutSeconds: 90, memory: '512MiB' }, async (request) => {
     if (!request.auth) {
         throw new https_1.HttpsError('unauthenticated', 'Authentication required.');
     }
@@ -58,28 +61,135 @@ exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeout
     const userId = request.auth.uid;
     const db = admin.firestore();
     const now = admin.firestore.Timestamp.now();
+    // Load user profile for timezone + display name personalisation
+    let userTimezone;
+    let userDisplayName;
+    try {
+        const profileSnap = await db.collection('users').doc(userId).get();
+        if (profileSnap.exists) {
+            const profileData = profileSnap.data();
+            userTimezone = profileData?.timezone;
+            userDisplayName =
+                profileData?.displayName ??
+                    request.auth.token?.name;
+        }
+        else {
+            userDisplayName = request.auth.token?.name;
+        }
+    }
+    catch {
+        userDisplayName = request.auth.token?.name;
+    }
+    const systemPrompt = (0, ariaSystem_1.buildAriaSystemPrompt)(userTimezone, userDisplayName);
     const trimmedHistory = history.slice(-MAX_HISTORY);
-    const claudeMessages = [
-        ...trimmedHistory,
-        { role: 'user', content: message },
-    ];
     const apiKey = anthropicApiKey.value();
     if (!apiKey) {
         throw new https_1.HttpsError('internal', 'AI service not configured.');
     }
     const anthropic = new sdk_1.default({ apiKey });
-    const response = await anthropic.messages.create({
+    const claudeMessages = [
+        ...trimmedHistory.map((h) => ({ role: h.role, content: h.content })),
+        { role: 'user', content: message },
+    ];
+    // First Claude call — include tools so Claude can detect intent
+    const firstResponse = await anthropic.messages.create({
         model: 'claude-opus-4-8',
         max_tokens: 1024,
-        system: ariaSystem_1.ARIA_SYSTEM_PROMPT,
+        system: systemPrompt,
+        tools: toolDefinitions_1.ARIA_TOOLS,
         messages: claudeMessages,
     });
-    const reply = response.content
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join('');
+    let reply;
+    const actionResults = [];
+    if (firstResponse.stop_reason === 'tool_use') {
+        const toolUseBlock = firstResponse.content.find((b) => b.type === 'tool_use');
+        if (toolUseBlock && (0, toolDefinitions_1.isAriaTool)(toolUseBlock.name)) {
+            const toolArgs = toolUseBlock.input;
+            // Validate datetime fields before passing to Action Engine
+            let validationError = null;
+            if (typeof toolArgs.scheduledAt === 'string') {
+                validationError = (0, dateTimeResolver_1.validateISODatetime)(toolArgs.scheduledAt);
+            }
+            else if (typeof toolArgs.dueAt === 'string') {
+                validationError = (0, dateTimeResolver_1.validateISODatetime)(toolArgs.dueAt);
+            }
+            let toolResultContent;
+            if (validationError) {
+                toolResultContent = JSON.stringify({ error: validationError });
+                actionResults.push({
+                    name: toolUseBlock.name,
+                    success: false,
+                    actionId: toolUseBlock.id,
+                    message: validationError,
+                });
+            }
+            else {
+                const actionResult = await action_engine_1.ActionEngine.run({
+                    toolName: toolUseBlock.name,
+                    args: toolArgs,
+                    userId,
+                    userDisplayName,
+                    db,
+                });
+                toolResultContent = JSON.stringify({
+                    success: actionResult.success,
+                    message: actionResult.message,
+                    data: actionResult.data,
+                });
+                actionResults.push({
+                    name: toolUseBlock.name,
+                    success: actionResult.success,
+                    actionId: actionResult.actionId,
+                    message: actionResult.message,
+                });
+            }
+            // Second Claude call with tool_result — get the final user-facing reply
+            const secondResponse = await anthropic.messages.create({
+                model: 'claude-opus-4-8',
+                max_tokens: 512,
+                system: systemPrompt,
+                messages: [
+                    ...claudeMessages,
+                    { role: 'assistant', content: firstResponse.content },
+                    {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'tool_result',
+                                tool_use_id: toolUseBlock.id,
+                                content: toolResultContent,
+                            },
+                        ],
+                    },
+                ],
+            });
+            reply = secondResponse.content
+                .filter((b) => b.type === 'text')
+                .map((b) => b.text)
+                .join('');
+        }
+        else {
+            // Unrecognised tool — fall back to any text in the response
+            reply = firstResponse.content
+                .filter((b) => b.type === 'text')
+                .map((b) => b.text)
+                .join('');
+        }
+    }
+    else {
+        // Normal conversational response — no tool call needed
+        reply = firstResponse.content
+            .filter((b) => b.type === 'text')
+            .map((b) => b.text)
+            .join('');
+    }
+    // Persist messages via admin SDK (bypasses Firestore rules that block client writes)
     const batch = db.batch();
-    const sessionRef = db.collection('users').doc(userId).collection('chatSessions').doc(sessionId);
+    const sessionRef = db
+        .collection('users')
+        .doc(userId)
+        .collection('chatSessions')
+        .doc(sessionId);
     const messagesRef = sessionRef.collection('messages');
     const userMsgRef = messagesRef.doc();
     batch.set(userMsgRef, {
@@ -90,13 +200,18 @@ exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeout
         userId,
     });
     const ariaMsgRef = messagesRef.doc();
-    batch.set(ariaMsgRef, {
+    const ariaMsgDoc = {
         role: 'assistant',
         content: reply,
         timestamp: admin.firestore.Timestamp.fromMillis(now.toMillis() + 1),
         sessionId,
         userId,
-    });
+    };
+    if (actionResults.length > 0) {
+        ariaMsgDoc.toolUsed = true;
+        ariaMsgDoc.tools = actionResults;
+    }
+    batch.set(ariaMsgRef, ariaMsgDoc);
     batch.set(sessionRef, {
         userId,
         updatedAt: now,
@@ -104,6 +219,14 @@ exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeout
         messageCount: admin.firestore.FieldValue.increment(2),
     }, { merge: true });
     await batch.commit();
-    return { reply, sessionId, messageId: ariaMsgRef.id };
+    const response = {
+        reply,
+        sessionId,
+        messageId: ariaMsgRef.id,
+    };
+    if (actionResults.length > 0) {
+        response.actionResults = actionResults;
+    }
+    return response;
 });
 //# sourceMappingURL=chat.js.map

@@ -25,10 +25,18 @@ export interface ChatWithAriaRequest {
   history?: Array<{ role: 'user' | 'assistant'; content: string }>
 }
 
+export interface ActionMetadata {
+  name: string
+  success: boolean
+  actionId: string
+  message: string
+}
+
 export interface ChatWithAriaResponse {
   reply: string
   sessionId: string
   messageId: string
+  actionResults?: ActionMetadata[]
 }
 
 export interface TranscribeAudioRequest {
