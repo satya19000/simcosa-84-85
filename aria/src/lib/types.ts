@@ -1,5 +1,56 @@
 import type { Timestamp } from 'firebase/firestore'
 
+export type TaskPriority = 'low' | 'normal' | 'high' | 'critical'
+export type ReminderRecurrence = 'none' | 'daily' | 'weekly' | 'monthly'
+
+export interface Task {
+  id: string
+  title: string
+  priority: TaskPriority
+  dueAt: string | null
+  category: string | null
+  notes: string | null
+  completed: boolean
+  completedAt?: string
+  userId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Reminder {
+  id: string
+  title: string
+  scheduledAt: string
+  recurrence: ReminderRecurrence
+  notes: string | null
+  completed: boolean
+  userId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ActivityLog {
+  id: string
+  actionId: string
+  toolName: string
+  userId: string
+  timestamp: string
+  durationMs: number
+  success: boolean
+  argsSummary: Record<string, unknown>
+  errorCode: string | null
+  errorDetail: string | null
+}
+
+export interface ActionCallResult {
+  success: boolean
+  message: string
+  data: unknown
+  error: { code: string; detail: string } | null
+  executionTimeMs: number
+  actionId: string
+}
+
 export interface ActionChip {
   name: string
   success: boolean

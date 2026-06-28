@@ -1,141 +1,274 @@
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Bell, Mic, Plus, Clock, Calendar, FileText, Zap } from 'lucide-react'
+import { MessageSquare, Plus, Bell, CheckSquare, Zap, Activity } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
+import { Skeleton } from '@/components/ui/LoadingSkeleton'
+import { TaskCard } from '@/components/tasks/TaskCard'
+import { ReminderCard } from '@/components/reminders/ReminderCard'
+import { TaskQuickAddModal } from '@/components/tasks/TaskQuickAddModal'
+import { ReminderQuickAddModal } from '@/components/reminders/ReminderQuickAddModal'
+import { subscribeToTasks, completeTask, deleteTask } from '@/lib/taskService'
+import { subscribeToReminders, deleteReminder } from '@/lib/reminderService'
+import { subscribeToActivityLogs } from '@/lib/dashboardService'
 import { useAuthStore } from '@/store/authStore'
-import { getGreeting, formatDate } from '@/lib/utils'
+import { getGreeting } from '@/lib/utils'
+import type { Task, Reminder, ActivityLog } from '@/lib/types'
+import type { Unsubscribe } from 'firebase/firestore'
 
-const quickActions = [
-  { icon: Mic, label: 'Voice', color: 'text-[#7C3AED]', bg: 'bg-[#7C3AED]/10' },
-  { icon: Plus, label: 'Task', color: 'text-[#06B6D4]', bg: 'bg-[#06B6D4]/10' },
-  { icon: Bell, label: 'Remind', color: 'text-amber-400', bg: 'bg-amber-400/10' },
-  { icon: FileText, label: 'Note', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-]
-
-const stagger = {
-  animate: { transition: { staggerChildren: 0.08 } },
-}
 const fadeUp = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.4 } },
+  hidden: { opacity: 0, y: 16 },
+  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.07, duration: 0.4 } }),
+}
+
+function isToday(isoString: string): boolean {
+  const d = new Date(isoString)
+  const now = new Date()
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  )
+}
+
+function toolNameLabel(toolName: string): string {
+  const labels: Record<string, string> = {
+    createTask: 'Task created',
+    createReminder: 'Reminder set',
+    completeTask: 'Task completed',
+    deleteTask: 'Task deleted',
+    deleteReminder: 'Reminder deleted',
+  }
+  return labels[toolName] ?? toolName
 }
 
 export default function Home() {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const firstName = user?.displayName?.split(' ')[0] ?? 'there'
-  const greeting = getGreeting()
-  const today = formatDate(new Date())
+
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [tasksLoading, setTasksLoading] = useState(true)
+  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [remindersLoading, setRemindersLoading] = useState(true)
+  const [logs, setLogs] = useState<ActivityLog[]>([])
+  const [showTaskModal, setShowTaskModal] = useState(false)
+  const [showReminderModal, setShowReminderModal] = useState(false)
+
+  const unsubTasksRef = useRef<Unsubscribe | null>(null)
+  const unsubRemindersRef = useRef<Unsubscribe | null>(null)
+  const unsubLogsRef = useRef<Unsubscribe | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+
+    setTasksLoading(true)
+    unsubTasksRef.current = subscribeToTasks(
+      user.uid,
+      (t) => { setTasks(t); setTasksLoading(false) },
+      () => setTasksLoading(false)
+    )
+
+    setRemindersLoading(true)
+    unsubRemindersRef.current = subscribeToReminders(
+      user.uid,
+      (r) => { setReminders(r); setRemindersLoading(false) },
+      () => setRemindersLoading(false)
+    )
+
+    unsubLogsRef.current = subscribeToActivityLogs(user.uid, 5, setLogs, () => setLogs([]))
+
+    return () => {
+      unsubTasksRef.current?.()
+      unsubRemindersRef.current?.()
+      unsubLogsRef.current?.()
+    }
+  }, [user])
+
+  const pendingTasks = tasks.filter((t) => !t.completed)
+  const todayReminders = reminders.filter((r) => isToday(r.scheduledAt))
+  const upcomingReminders = reminders.filter(
+    (r) => !isToday(r.scheduledAt) && new Date(r.scheduledAt) > new Date()
+  )
 
   return (
-    <motion.div
-      variants={stagger}
-      initial="initial"
-      animate="animate"
-      className="px-4 pt-6 pb-4 space-y-5"
-    >
-      {/* Header */}
-      <motion.div variants={fadeUp} className="flex items-start justify-between">
+    <div className="px-4 pt-6 pb-8 space-y-6 safe-top overflow-y-auto h-[calc(100vh-96px)]">
+      {/* Greeting */}
+      <motion.div
+        custom={0}
+        variants={fadeUp}
+        initial="hidden"
+        animate="visible"
+        className="flex items-center justify-between"
+      >
         <div>
-          <p className="text-white/50 text-sm">{today}</p>
-          <h1 className="text-2xl font-bold text-white mt-0.5">
-            {greeting}, {firstName} 👋
-          </h1>
+          <p className="text-xs text-white/40 uppercase tracking-widest font-medium">{getGreeting()}</p>
+          <h1 className="text-2xl font-bold text-white mt-0.5">{firstName} 👋</h1>
         </div>
-        <button className="relative w-10 h-10 rounded-xl glass border border-white/10 flex items-center justify-center">
-          <Bell className="w-5 h-5 text-white/60" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-[#7C3AED] rounded-full" />
-        </button>
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#06B6D4] flex items-center justify-center shadow-lg shadow-violet-500/30">
+          <span className="text-white text-sm font-bold">{firstName.charAt(0).toUpperCase()}</span>
+        </div>
       </motion.div>
 
-      {/* ARIA Orb Hero */}
-      <motion.div variants={fadeUp}>
-        <Card glow="violet" className="flex items-center gap-4 p-5">
-          <div className="relative flex-shrink-0">
-            <motion.div
-              className="w-14 h-14 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#06B6D4] flex items-center justify-center"
-              animate={{ boxShadow: ['0 0 0 0 rgba(124,58,237,0.4)', '0 0 0 16px rgba(124,58,237,0)', '0 0 0 0 rgba(124,58,237,0)'] }}
-              transition={{ duration: 2.5, repeat: Infinity }}
-            >
-              <span className="text-2xl">✦</span>
-            </motion.div>
+      {/* Stats row */}
+      <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible" className="grid grid-cols-2 gap-3">
+        <Card glow="violet" className="p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckSquare className="w-4 h-4 text-[#7C3AED]" />
+            <span className="text-xs text-white/50">Pending</span>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[#7C3AED] text-xs font-semibold uppercase tracking-wider mb-1">ARIA</p>
-            <p className="text-white text-sm leading-snug">
-              Good to see you! I'm ready to help you conquer today. Ask me anything.
-            </p>
+          {tasksLoading ? (
+            <Skeleton className="h-7 w-10 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-white">{pendingTasks.length}</p>
+          )}
+          <p className="text-[10px] text-white/30 mt-0.5">tasks</p>
+        </Card>
+
+        <Card glow="cyan" className="p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Bell className="w-4 h-4 text-[#06B6D4]" />
+            <span className="text-xs text-white/50">Today</span>
           </div>
+          {remindersLoading ? (
+            <Skeleton className="h-7 w-10 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-white">{todayReminders.length}</p>
+          )}
+          <p className="text-[10px] text-white/30 mt-0.5">reminders</p>
         </Card>
       </motion.div>
 
-      {/* Quick Actions */}
-      <motion.div variants={fadeUp}>
-        <h2 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Quick Actions</h2>
-        <div className="grid grid-cols-4 gap-3">
-          {quickActions.map(({ icon: Icon, label, color, bg }) => (
+      {/* Quick actions */}
+      <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible">
+        <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium mb-3">Quick Actions</p>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { icon: MessageSquare, label: 'Ask ARIA', color: 'from-[#7C3AED] to-[#5B21B6]', onClick: () => navigate('/chat') },
+            { icon: Plus, label: 'Add Task', color: 'from-[#7C3AED]/30 to-[#7C3AED]/10', onClick: () => setShowTaskModal(true) },
+            { icon: Bell, label: 'Remind Me', color: 'from-[#06B6D4]/30 to-[#06B6D4]/10', onClick: () => setShowReminderModal(true) },
+          ].map(({ icon: Icon, label, color, onClick }) => (
             <button
               key={label}
-              className="flex flex-col items-center gap-2 p-3 rounded-2xl glass border border-white/10 hover:border-white/20 transition-all duration-200 active:scale-95"
+              onClick={onClick}
+              className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-br ${color} border border-white/10 active:scale-95 transition-transform`}
             >
-              <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center`}>
-                <Icon className={`w-5 h-5 ${color}`} />
-              </div>
-              <span className="text-xs text-white/60">{label}</span>
+              <Icon className="w-5 h-5 text-white" />
+              <span className="text-[10px] text-white/80 font-medium">{label}</span>
             </button>
           ))}
         </div>
       </motion.div>
 
-      {/* Today's Briefing */}
-      <motion.div variants={fadeUp}>
-        <h2 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Today's Briefing</h2>
-        <Card glow="cyan" className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#06B6D4]/10 flex items-center justify-center flex-shrink-0">
-              <Calendar className="w-4 h-4 text-[#06B6D4]" />
-            </div>
-            <div>
-              <p className="text-white text-sm font-medium">3 meetings today</p>
-              <p className="text-white/40 text-xs">Next: Team Standup at 10:00 AM</p>
-            </div>
+      {/* Today's reminders */}
+      {(todayReminders.length > 0 || remindersLoading) && (
+        <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium">Today's Reminders</p>
+            {todayReminders.length > 3 && (
+              <button onClick={() => navigate('/calendar')} className="text-[10px] text-[#06B6D4]">
+                View all →
+              </button>
+            )}
           </div>
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-4 h-4 text-amber-400" />
+          {remindersLoading ? (
+            <div className="space-y-2">
+              {[0, 1].map((i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}
             </div>
-            <div>
-              <p className="text-white text-sm font-medium">5 tasks pending</p>
-              <p className="text-white/40 text-xs">2 are high priority</p>
+          ) : (
+            <div className="space-y-2">
+              {todayReminders.slice(0, 3).map((r) => (
+                <ReminderCard key={r.id} reminder={r} onDelete={deleteReminder} />
+              ))}
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#7C3AED]/10 flex items-center justify-center flex-shrink-0">
-              <Zap className="w-4 h-4 text-[#7C3AED]" />
-            </div>
-            <div>
-              <p className="text-white text-sm font-medium">ARIA Insight</p>
-              <p className="text-white/40 text-xs">You haven't called Rahul in 7 days</p>
-            </div>
-          </div>
-        </Card>
-      </motion.div>
+          )}
+        </motion.div>
+      )}
 
-      {/* Upcoming Reminders Placeholder */}
-      <motion.div variants={fadeUp}>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-white/40 uppercase tracking-wider">Reminders</h2>
-          <Button variant="ghost" size="sm" className="text-xs text-[#7C3AED] px-2">See all</Button>
-        </div>
-        <div className="space-y-2">
-          {['Review project proposal', 'Call insurance agent', 'Gym session'].map((task, i) => (
-            <div key={task} className="flex items-center gap-3 glass border border-white/10 rounded-xl p-3">
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i === 0 ? 'bg-red-400' : i === 1 ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-              <span className="text-sm text-white/80">{task}</span>
-              <span className="ml-auto text-xs text-white/30">{i === 0 ? '10:00 AM' : i === 1 ? '2:00 PM' : '6:00 PM'}</span>
+      {/* Upcoming teaser when no today reminders */}
+      {!remindersLoading && todayReminders.length === 0 && upcomingReminders.length > 0 && (
+        <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible">
+          <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium mb-3">Upcoming</p>
+          <ReminderCard reminder={upcomingReminders[0]} onDelete={deleteReminder} />
+          {upcomingReminders.length > 1 && (
+            <button
+              onClick={() => navigate('/calendar')}
+              className="mt-2 text-[10px] text-[#06B6D4] block text-center w-full"
+            >
+              +{upcomingReminders.length - 1} more upcoming →
+            </button>
+          )}
+        </motion.div>
+      )}
+
+      {/* Pending tasks */}
+      {(pendingTasks.length > 0 || tasksLoading) && (
+        <motion.div custom={4} variants={fadeUp} initial="hidden" animate="visible">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium">Pending Tasks</p>
+            {pendingTasks.length > 3 && (
+              <span className="text-[10px] text-white/30">+{pendingTasks.length - 3} more</span>
+            )}
+          </div>
+          {tasksLoading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}
             </div>
-          ))}
-        </div>
-      </motion.div>
-    </motion.div>
+          ) : (
+            <div className="space-y-2">
+              {pendingTasks.slice(0, 3).map((t) => (
+                <TaskCard key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} />
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Recent activity */}
+      {logs.length > 0 && (
+        <motion.div custom={5} variants={fadeUp} initial="hidden" animate="visible">
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="w-3 h-3 text-white/30" />
+            <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium">Recent Activity</p>
+          </div>
+          <Card className="divide-y divide-white/5">
+            {logs.map((log) => (
+              <div key={log.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                <span className={log.success ? 'text-emerald-400 text-xs' : 'text-red-400 text-xs'}>
+                  {log.success ? '✓' : '✗'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white/70 truncate">{toolNameLabel(log.toolName)}</p>
+                  <p className="text-[10px] text-white/30">
+                    {new Date(log.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+                {!log.success && <Zap className="w-3 h-3 text-red-400 flex-shrink-0" />}
+              </div>
+            ))}
+          </Card>
+        </motion.div>
+      )}
+
+      {/* All-clear empty state */}
+      {!tasksLoading && !remindersLoading && pendingTasks.length === 0 && reminders.length === 0 && (
+        <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible">
+          <Card className="text-center py-10">
+            <p className="text-3xl mb-3">✦</p>
+            <p className="text-sm font-medium text-white mb-1">Your slate is clean</p>
+            <p className="text-xs text-white/40">Ask ARIA to set tasks or reminders for you.</p>
+            <button
+              onClick={() => navigate('/chat')}
+              className="mt-4 text-xs text-[#7C3AED] hover:text-[#9D6EF8] transition-colors"
+            >
+              Open Chat →
+            </button>
+          </Card>
+        </motion.div>
+      )}
+
+      <TaskQuickAddModal isOpen={showTaskModal} onClose={() => setShowTaskModal(false)} />
+      <ReminderQuickAddModal isOpen={showReminderModal} onClose={() => setShowReminderModal(false)} />
+    </div>
   )
 }

@@ -18,3 +18,6 @@ export {
 // To add a new action: create the file and import it here — nothing else changes.
 import './actions/CreateTaskAction'
 import './actions/CreateReminderAction'
+import './actions/CompleteTaskAction'
+import './actions/DeleteTaskAction'
+import './actions/DeleteReminderAction'

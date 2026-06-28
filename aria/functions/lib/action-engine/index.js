@@ -18,4 +18,7 @@ Object.defineProperty(exports, "RollbackError", { enumerable: true, get: functio
 // To add a new action: create the file and import it here — nothing else changes.
 require("./actions/CreateTaskAction");
 require("./actions/CreateReminderAction");
+require("./actions/CompleteTaskAction");
+require("./actions/DeleteTaskAction");
+require("./actions/DeleteReminderAction");
 //# sourceMappingURL=index.js.map
