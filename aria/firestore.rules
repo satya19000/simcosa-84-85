@@ -1,0 +1,81 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ─────────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isValidChatMessage() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['role', 'content', 'timestamp', 'sessionId', 'userId'])
+        && data.role in ['user', 'assistant']
+        && data.content is string
+        && data.content.size() > 0
+        && data.content.size() <= 10000;
+    }
+
+    // ── Users ─────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+
+      // Chat sessions
+      match /chatSessions/{sessionId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+
+        // Messages within a session — read only by owner
+        // Writes are done server-side via Cloud Functions only
+        match /messages/{messageId} {
+          allow read: if isAuthenticated() && isOwner(userId);
+          allow write: if false; // Cloud Functions only
+        }
+      }
+
+      // Tasks
+      match /tasks/{taskId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+
+      // Reminders
+      match /reminders/{reminderId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+
+      // Contacts / Relationship Memory
+      match /contacts/{contactId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+
+      // Vault documents metadata
+      match /vaultItems/{itemId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+
+      // User profile and preferences
+      match /profile/{doc} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+
+      // Financial records
+      match /financials/{doc} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+
+      // Health records
+      match /health/{doc} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+    }
+
+    // ── Deny everything else ─────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

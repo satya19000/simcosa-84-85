@@ -1,0 +1,7 @@
+import * as admin from 'firebase-admin'
+
+// Initialize Firebase Admin once
+admin.initializeApp()
+
+export { chatWithAria } from './chat'
+export { transcribeAudio, synthesizeSpeech } from './voice'
