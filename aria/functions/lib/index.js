@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setWorkflowEnabled = exports.getWorkflowSchedules = exports.listWorkflows = exports.getWorkflowHistory = exports.runWorkflow = exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
+exports.getAgentStatus = exports.runAgentGraph = exports.setWorkflowEnabled = exports.getWorkflowSchedules = exports.listWorkflows = exports.getWorkflowHistory = exports.runWorkflow = exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin once
 admin.initializeApp();
@@ -58,4 +58,7 @@ Object.defineProperty(exports, "getWorkflowHistory", { enumerable: true, get: fu
 Object.defineProperty(exports, "listWorkflows", { enumerable: true, get: function () { return workflowApi_1.listWorkflowsFn; } });
 Object.defineProperty(exports, "getWorkflowSchedules", { enumerable: true, get: function () { return workflowApi_1.getWorkflowSchedulesFn; } });
 Object.defineProperty(exports, "setWorkflowEnabled", { enumerable: true, get: function () { return workflowApi_1.setWorkflowEnabledFn; } });
+var agentApi_1 = require("./agentApi");
+Object.defineProperty(exports, "runAgentGraph", { enumerable: true, get: function () { return agentApi_1.runAgentGraph; } });
+Object.defineProperty(exports, "getAgentStatus", { enumerable: true, get: function () { return agentApi_1.getAgentStatus; } });
 //# sourceMappingURL=index.js.map

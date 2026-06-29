@@ -12,6 +12,7 @@ import Login from '@/pages/auth/Login'
 import Signup from '@/pages/auth/Signup'
 import PluginDebug from '@/pages/PluginDebug'
 import WorkflowEditor from '@/pages/WorkflowEditor'
+import AgentDashboard from '@/pages/AgentDashboard'
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/devtools/plugins" element={<PluginDebug />} />
           <Route path="/devtools/workflows" element={<WorkflowEditor />} />
+          <Route path="/devtools/agents" element={<AgentDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
