@@ -32,3 +32,14 @@ export {
   upsertMemoryNode,
   listMemoryNodes,
 } from './memoryGraphApi'
+export {
+  ingestDocument,
+  searchDocuments,
+  chatWithDocument,
+  listDocuments,
+  deleteDocument,
+  getDocumentStats,
+  createDocumentFolder,
+  listDocumentFolders,
+  rebuildDocumentIndex,
+} from './documentApi'

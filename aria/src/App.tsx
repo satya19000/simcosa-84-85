@@ -14,6 +14,9 @@ import PluginDebug from '@/pages/PluginDebug'
 import WorkflowEditor from '@/pages/WorkflowEditor'
 import AgentDashboard from '@/pages/AgentDashboard'
 import MemoryGraphDashboard from '@/pages/MemoryGraphDashboard'
+import Documents from '@/pages/Documents'
+import DocumentSearch from '@/pages/DocumentSearch'
+import DocumentDevDashboard from '@/pages/devtools/DocumentDevDashboard'
 
 export default function App() {
   return (
@@ -39,6 +42,9 @@ export default function App() {
           <Route path="/devtools/workflows" element={<WorkflowEditor />} />
           <Route path="/devtools/agents" element={<AgentDashboard />} />
           <Route path="/devtools/memory" element={<MemoryGraphDashboard />} />
+          <Route path="/documents" element={<Documents />} />
+          <Route path="/search" element={<DocumentSearch />} />
+          <Route path="/devtools/documents" element={<DocumentDevDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
