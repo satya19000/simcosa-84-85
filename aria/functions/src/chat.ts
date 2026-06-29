@@ -6,6 +6,7 @@ import { buildAriaSystemPrompt } from './prompts/ariaSystem'
 import { validateISODatetime } from './tools/dateTimeResolver'
 import { ARIA_TOOLS, isAriaTool } from './tools/toolDefinitions'
 import { ActionEngine } from './action-engine'
+import { runIntelligencePipeline } from './intelligence'
 import type { ChatWithAriaRequest, ChatWithAriaResponse, ActionMetadata } from './types'
 
 const anthropicApiKey = defineSecret('ANTHROPIC_API_KEY')
@@ -31,70 +32,41 @@ export const chatWithAria = onCall(
     const db = admin.firestore()
     const now = admin.firestore.Timestamp.now()
 
-    // Load user profile for timezone + display name personalisation
-    let userTimezone: string | undefined
-    let userDisplayName: string | undefined
-    try {
-      const profileSnap = await db.collection('users').doc(userId).get()
-      if (profileSnap.exists) {
-        const profileData = profileSnap.data()
-        userTimezone = profileData?.timezone as string | undefined
-        userDisplayName =
-          (profileData?.displayName as string | undefined) ??
-          (request.auth.token?.name as string | undefined)
-      } else {
-        userDisplayName = request.auth.token?.name as string | undefined
-      }
-    } catch {
-      userDisplayName = request.auth.token?.name as string | undefined
-    }
+    // Fallback display name from auth token (Intelligence Pipeline may override with profile)
+    const authDisplayName = request.auth.token?.name as string | undefined
 
-    // Load contact context — recent contacts + any name-matching the user's message
-    let contactContext = ''
-    try {
-      const contactsSnap = await db
-        .collection('users').doc(userId)
-        .collection('contacts')
-        .orderBy('updatedAt', 'desc')
-        .limit(20)
-        .get()
-
-      if (!contactsSnap.empty) {
-        const msgLower = message.toLowerCase()
-        const lines: string[] = []
-
-        for (const doc of contactsSnap.docs) {
-          const d = doc.data() as Record<string, unknown>
-          const name = (d.name as string) ?? ''
-          // Include if name appears in message, or always include top contacts compactly
-          const isNamedInMsg = name.length > 0 && msgLower.includes(name.toLowerCase())
-          const parts: string[] = [name]
-          if (d.relationshipType) parts.push(d.relationshipType as string)
-          if (d.role) parts.push(d.role as string)
-          if (d.organization) parts.push(d.organization as string)
-          if (d.preferredContactMethod && d.preferredContactMethod !== 'unknown') {
-            parts.push(`prefers ${d.preferredContactMethod}`)
-          }
-          if (d.phone) parts.push(`ph: ${d.phone}`)
-          if (d.email) parts.push(`email: ${d.email}`)
-          if (isNamedInMsg && d.relationshipNotes) {
-            // Include notes only if this contact is mentioned
-            const notePreview = (d.relationshipNotes as string).slice(0, 300)
-            parts.push(`notes: ${notePreview}`)
-          }
-          lines.push(`• ${parts.join(' — ')} [id:${doc.id}]`)
-        }
-
-        if (lines.length > 0) {
-          contactContext = `\n\nKnown contacts (use contactId from [id:…] when calling contact tools):\n${lines.join('\n')}`
-        }
-      }
-    } catch {
-      // Non-fatal — proceed without contact context
-    }
-
-    const systemPrompt = buildAriaSystemPrompt(userTimezone, userDisplayName) + contactContext
     const trimmedHistory = history.slice(-MAX_HISTORY)
+
+    // ── Intelligence Pipeline ─────────────────────────────────────────────────
+    // Builds system prompt with context + memory + recommendations.
+    // Replaces manual profile + contact context loading from previous phases.
+    const systemBase = buildAriaSystemPrompt(undefined, authDisplayName)
+
+    let systemPrompt = systemBase
+    let userDisplayName = authDisplayName
+    let intelligenceMetrics: Record<string, unknown> = {}
+
+    try {
+      const pipeline = await runIntelligencePipeline({
+        userId,
+        db,
+        message,
+        history: trimmedHistory,
+        systemBase,
+      })
+
+      systemPrompt = pipeline.assembledSystemPrompt
+      userDisplayName = pipeline.context.userDisplayName ?? authDisplayName
+      intelligenceMetrics = {
+        execMs: pipeline.metrics.executionTimeMs,
+        cacheHits: pipeline.metrics.cacheHits,
+        memBlocks: pipeline.metrics.memoryBlocksUsed,
+        promptChars: pipeline.metrics.promptSizeChars,
+        decisions: pipeline.metrics.decisionCount,
+      }
+    } catch {
+      // Non-fatal — fall back to base system prompt, log metrics as empty
+    }
 
     const apiKey = anthropicApiKey.value()
     if (!apiKey) {
@@ -248,6 +220,7 @@ export const chatWithAria = onCall(
         updatedAt: now,
         lastMessage: reply.slice(0, 120),
         messageCount: admin.firestore.FieldValue.increment(2),
+        ...(Object.keys(intelligenceMetrics).length > 0 && { lastIntelligenceMetrics: intelligenceMetrics }),
       },
       { merge: true }
     )
