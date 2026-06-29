@@ -13,6 +13,7 @@ import Signup from '@/pages/auth/Signup'
 import PluginDebug from '@/pages/PluginDebug'
 import WorkflowEditor from '@/pages/WorkflowEditor'
 import AgentDashboard from '@/pages/AgentDashboard'
+import MemoryGraphDashboard from '@/pages/MemoryGraphDashboard'
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/devtools/plugins" element={<PluginDebug />} />
           <Route path="/devtools/workflows" element={<WorkflowEditor />} />
           <Route path="/devtools/agents" element={<AgentDashboard />} />
+          <Route path="/devtools/memory" element={<MemoryGraphDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

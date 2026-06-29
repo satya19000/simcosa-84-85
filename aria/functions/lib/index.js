@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAgentStatus = exports.runAgentGraph = exports.setWorkflowEnabled = exports.getWorkflowSchedules = exports.listWorkflows = exports.getWorkflowHistory = exports.runWorkflow = exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
+exports.listMemoryNodes = exports.upsertMemoryNode = exports.extractRelationships = exports.getMemoryGraphStats = exports.validateMemoryGraph = exports.rebuildMemoryIndex = exports.retrieveMemoryContext = exports.searchMemoryGraph = exports.buildMemoryFromChat = exports.buildMemoryFromReminder = exports.buildMemoryFromTask = exports.buildMemoryFromContact = exports.getAgentStatus = exports.runAgentGraph = exports.setWorkflowEnabled = exports.getWorkflowSchedules = exports.listWorkflows = exports.getWorkflowHistory = exports.runWorkflow = exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin once
 admin.initializeApp();
@@ -61,4 +61,17 @@ Object.defineProperty(exports, "setWorkflowEnabled", { enumerable: true, get: fu
 var agentApi_1 = require("./agentApi");
 Object.defineProperty(exports, "runAgentGraph", { enumerable: true, get: function () { return agentApi_1.runAgentGraph; } });
 Object.defineProperty(exports, "getAgentStatus", { enumerable: true, get: function () { return agentApi_1.getAgentStatus; } });
+var memoryGraphApi_1 = require("./memoryGraphApi");
+Object.defineProperty(exports, "buildMemoryFromContact", { enumerable: true, get: function () { return memoryGraphApi_1.buildMemoryFromContact; } });
+Object.defineProperty(exports, "buildMemoryFromTask", { enumerable: true, get: function () { return memoryGraphApi_1.buildMemoryFromTask; } });
+Object.defineProperty(exports, "buildMemoryFromReminder", { enumerable: true, get: function () { return memoryGraphApi_1.buildMemoryFromReminder; } });
+Object.defineProperty(exports, "buildMemoryFromChat", { enumerable: true, get: function () { return memoryGraphApi_1.buildMemoryFromChat; } });
+Object.defineProperty(exports, "searchMemoryGraph", { enumerable: true, get: function () { return memoryGraphApi_1.searchMemoryGraph; } });
+Object.defineProperty(exports, "retrieveMemoryContext", { enumerable: true, get: function () { return memoryGraphApi_1.retrieveMemoryContext; } });
+Object.defineProperty(exports, "rebuildMemoryIndex", { enumerable: true, get: function () { return memoryGraphApi_1.rebuildMemoryIndex; } });
+Object.defineProperty(exports, "validateMemoryGraph", { enumerable: true, get: function () { return memoryGraphApi_1.validateMemoryGraph; } });
+Object.defineProperty(exports, "getMemoryGraphStats", { enumerable: true, get: function () { return memoryGraphApi_1.getMemoryGraphStats; } });
+Object.defineProperty(exports, "extractRelationships", { enumerable: true, get: function () { return memoryGraphApi_1.extractRelationships; } });
+Object.defineProperty(exports, "upsertMemoryNode", { enumerable: true, get: function () { return memoryGraphApi_1.upsertMemoryNode; } });
+Object.defineProperty(exports, "listMemoryNodes", { enumerable: true, get: function () { return memoryGraphApi_1.listMemoryNodes; } });
 //# sourceMappingURL=index.js.map

@@ -18,3 +18,17 @@ export {
   setWorkflowEnabledFn as setWorkflowEnabled,
 } from './workflowApi'
 export { runAgentGraph, getAgentStatus } from './agentApi'
+export {
+  buildMemoryFromContact,
+  buildMemoryFromTask,
+  buildMemoryFromReminder,
+  buildMemoryFromChat,
+  searchMemoryGraph,
+  retrieveMemoryContext,
+  rebuildMemoryIndex,
+  validateMemoryGraph,
+  getMemoryGraphStats,
+  extractRelationships,
+  upsertMemoryNode,
+  listMemoryNodes,
+} from './memoryGraphApi'
