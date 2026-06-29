@@ -11,6 +11,7 @@ import Profile from '@/pages/Profile'
 import Login from '@/pages/auth/Login'
 import Signup from '@/pages/auth/Signup'
 import PluginDebug from '@/pages/PluginDebug'
+import WorkflowEditor from '@/pages/WorkflowEditor'
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/vault" element={<Vault />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/devtools/plugins" element={<PluginDebug />} />
+          <Route path="/devtools/workflows" element={<WorkflowEditor />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
