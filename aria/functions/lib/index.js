@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
+exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin once
 admin.initializeApp();
@@ -50,4 +50,6 @@ var processDueReminders_1 = require("./processDueReminders");
 Object.defineProperty(exports, "processDueReminders", { enumerable: true, get: function () { return processDueReminders_1.processDueReminders; } });
 var briefing_1 = require("./briefing");
 Object.defineProperty(exports, "generateDailyBriefing", { enumerable: true, get: function () { return briefing_1.generateDailyBriefing; } });
+var pluginStatus_1 = require("./pluginStatus");
+Object.defineProperty(exports, "getPluginStatus", { enumerable: true, get: function () { return pluginStatus_1.getPluginStatus; } });
 //# sourceMappingURL=index.js.map

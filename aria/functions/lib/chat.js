@@ -45,6 +45,8 @@ const ariaSystem_1 = require("./prompts/ariaSystem");
 const dateTimeResolver_1 = require("./tools/dateTimeResolver");
 const toolDefinitions_1 = require("./tools/toolDefinitions");
 const action_engine_1 = require("./action-engine");
+const intelligence_1 = require("./intelligence");
+const plugins_1 = require("./plugins");
 const anthropicApiKey = (0, params_1.defineSecret)('ANTHROPIC_API_KEY');
 const MAX_HISTORY = 20;
 exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeoutSeconds: 90, memory: '512MiB' }, async (request) => {
@@ -61,73 +63,37 @@ exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeout
     const userId = request.auth.uid;
     const db = admin.firestore();
     const now = admin.firestore.Timestamp.now();
-    // Load user profile for timezone + display name personalisation
-    let userTimezone;
-    let userDisplayName;
-    try {
-        const profileSnap = await db.collection('users').doc(userId).get();
-        if (profileSnap.exists) {
-            const profileData = profileSnap.data();
-            userTimezone = profileData?.timezone;
-            userDisplayName =
-                profileData?.displayName ??
-                    request.auth.token?.name;
-        }
-        else {
-            userDisplayName = request.auth.token?.name;
-        }
-    }
-    catch {
-        userDisplayName = request.auth.token?.name;
-    }
-    // Load contact context — recent contacts + any name-matching the user's message
-    let contactContext = '';
-    try {
-        const contactsSnap = await db
-            .collection('users').doc(userId)
-            .collection('contacts')
-            .orderBy('updatedAt', 'desc')
-            .limit(20)
-            .get();
-        if (!contactsSnap.empty) {
-            const msgLower = message.toLowerCase();
-            const lines = [];
-            for (const doc of contactsSnap.docs) {
-                const d = doc.data();
-                const name = d.name ?? '';
-                // Include if name appears in message, or always include top contacts compactly
-                const isNamedInMsg = name.length > 0 && msgLower.includes(name.toLowerCase());
-                const parts = [name];
-                if (d.relationshipType)
-                    parts.push(d.relationshipType);
-                if (d.role)
-                    parts.push(d.role);
-                if (d.organization)
-                    parts.push(d.organization);
-                if (d.preferredContactMethod && d.preferredContactMethod !== 'unknown') {
-                    parts.push(`prefers ${d.preferredContactMethod}`);
-                }
-                if (d.phone)
-                    parts.push(`ph: ${d.phone}`);
-                if (d.email)
-                    parts.push(`email: ${d.email}`);
-                if (isNamedInMsg && d.relationshipNotes) {
-                    // Include notes only if this contact is mentioned
-                    const notePreview = d.relationshipNotes.slice(0, 300);
-                    parts.push(`notes: ${notePreview}`);
-                }
-                lines.push(`• ${parts.join(' — ')} [id:${doc.id}]`);
-            }
-            if (lines.length > 0) {
-                contactContext = `\n\nKnown contacts (use contactId from [id:…] when calling contact tools):\n${lines.join('\n')}`;
-            }
-        }
-    }
-    catch {
-        // Non-fatal — proceed without contact context
-    }
-    const systemPrompt = (0, ariaSystem_1.buildAriaSystemPrompt)(userTimezone, userDisplayName) + contactContext;
+    // Fallback display name from auth token (Intelligence Pipeline may override with profile)
+    const authDisplayName = request.auth.token?.name;
     const trimmedHistory = history.slice(-MAX_HISTORY);
+    // ── Intelligence Pipeline ─────────────────────────────────────────────────
+    // Builds system prompt with context + memory + recommendations.
+    // Replaces manual profile + contact context loading from previous phases.
+    const systemBase = (0, ariaSystem_1.buildAriaSystemPrompt)(undefined, authDisplayName);
+    let systemPrompt = systemBase;
+    let userDisplayName = authDisplayName;
+    let intelligenceMetrics = {};
+    try {
+        const pipeline = await (0, intelligence_1.runIntelligencePipeline)({
+            userId,
+            db,
+            message,
+            history: trimmedHistory,
+            systemBase,
+        });
+        systemPrompt = pipeline.assembledSystemPrompt;
+        userDisplayName = pipeline.context.userDisplayName ?? authDisplayName;
+        intelligenceMetrics = {
+            execMs: pipeline.metrics.executionTimeMs,
+            cacheHits: pipeline.metrics.cacheHits,
+            memBlocks: pipeline.metrics.memoryBlocksUsed,
+            promptChars: pipeline.metrics.promptSizeChars,
+            decisions: pipeline.metrics.decisionCount,
+        };
+    }
+    catch {
+        // Non-fatal — fall back to base system prompt, log metrics as empty
+    }
     const apiKey = anthropicApiKey.value();
     if (!apiKey) {
         throw new https_1.HttpsError('internal', 'AI service not configured.');
@@ -137,19 +103,46 @@ exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeout
         ...trimmedHistory.map((h) => ({ role: h.role, content: h.content })),
         { role: 'user', content: message },
     ];
+    // Merge core ARIA tools with any plugin-contributed tools
+    const pluginToolDefs = await (0, plugins_1.getPluginTools)(db, userId).catch(() => []);
+    const allTools = [
+        ...toolDefinitions_1.ARIA_TOOLS,
+        ...pluginToolDefs.map((pt) => ({
+            name: pt.name,
+            description: pt.description,
+            input_schema: pt.inputSchema,
+        })),
+    ];
     // First Claude call — include tools so Claude can detect intent
     const firstResponse = await anthropic.messages.create({
         model: 'claude-opus-4-8',
         max_tokens: 1024,
         system: systemPrompt,
-        tools: toolDefinitions_1.ARIA_TOOLS,
+        tools: allTools,
         messages: claudeMessages,
     });
     let reply;
     const actionResults = [];
     if (firstResponse.stop_reason === 'tool_use') {
         const toolUseBlock = firstResponse.content.find((b) => b.type === 'tool_use');
-        if (toolUseBlock && (0, toolDefinitions_1.isAriaTool)(toolUseBlock.name)) {
+        const isPluginTool = pluginToolDefs.some((pt) => pt.name === toolUseBlock?.name);
+        if (toolUseBlock && isPluginTool) {
+            const pluginResult = await (0, plugins_1.executePluginTool)(toolUseBlock.name, toolUseBlock.input, userId, db);
+            const toolResultContent = JSON.stringify(pluginResult);
+            actionResults.push({ name: toolUseBlock.name, success: pluginResult.success, actionId: toolUseBlock.id, message: pluginResult.error ?? 'Plugin tool executed' });
+            const secondResponse = await anthropic.messages.create({
+                model: 'claude-opus-4-8',
+                max_tokens: 512,
+                system: systemPrompt,
+                messages: [
+                    ...claudeMessages,
+                    { role: 'assistant', content: firstResponse.content },
+                    { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: toolResultContent }] },
+                ],
+            });
+            reply = secondResponse.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+        }
+        else if (toolUseBlock && (0, toolDefinitions_1.isAriaTool)(toolUseBlock.name)) {
             const toolArgs = toolUseBlock.input;
             // Validate datetime fields before passing to Action Engine
             let validationError = null;
@@ -263,6 +256,7 @@ exports.chatWithAria = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeout
         updatedAt: now,
         lastMessage: reply.slice(0, 120),
         messageCount: admin.firestore.FieldValue.increment(2),
+        ...(Object.keys(intelligenceMetrics).length > 0 && { lastIntelligenceMetrics: intelligenceMetrics }),
     }, { merge: true });
     await batch.commit();
     const response = {
