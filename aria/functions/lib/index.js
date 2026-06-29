@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listMemoryNodes = exports.upsertMemoryNode = exports.extractRelationships = exports.getMemoryGraphStats = exports.validateMemoryGraph = exports.rebuildMemoryIndex = exports.retrieveMemoryContext = exports.searchMemoryGraph = exports.buildMemoryFromChat = exports.buildMemoryFromReminder = exports.buildMemoryFromTask = exports.buildMemoryFromContact = exports.getAgentStatus = exports.runAgentGraph = exports.setWorkflowEnabled = exports.getWorkflowSchedules = exports.listWorkflows = exports.getWorkflowHistory = exports.runWorkflow = exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
+exports.rebuildDocumentIndex = exports.listDocumentFolders = exports.createDocumentFolder = exports.getDocumentStats = exports.deleteDocument = exports.listDocuments = exports.chatWithDocument = exports.searchDocuments = exports.ingestDocument = exports.listMemoryNodes = exports.upsertMemoryNode = exports.extractRelationships = exports.getMemoryGraphStats = exports.validateMemoryGraph = exports.rebuildMemoryIndex = exports.retrieveMemoryContext = exports.searchMemoryGraph = exports.buildMemoryFromChat = exports.buildMemoryFromReminder = exports.buildMemoryFromTask = exports.buildMemoryFromContact = exports.getAgentStatus = exports.runAgentGraph = exports.setWorkflowEnabled = exports.getWorkflowSchedules = exports.listWorkflows = exports.getWorkflowHistory = exports.runWorkflow = exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin once
 admin.initializeApp();
@@ -74,4 +74,14 @@ Object.defineProperty(exports, "getMemoryGraphStats", { enumerable: true, get: f
 Object.defineProperty(exports, "extractRelationships", { enumerable: true, get: function () { return memoryGraphApi_1.extractRelationships; } });
 Object.defineProperty(exports, "upsertMemoryNode", { enumerable: true, get: function () { return memoryGraphApi_1.upsertMemoryNode; } });
 Object.defineProperty(exports, "listMemoryNodes", { enumerable: true, get: function () { return memoryGraphApi_1.listMemoryNodes; } });
+var documentApi_1 = require("./documentApi");
+Object.defineProperty(exports, "ingestDocument", { enumerable: true, get: function () { return documentApi_1.ingestDocument; } });
+Object.defineProperty(exports, "searchDocuments", { enumerable: true, get: function () { return documentApi_1.searchDocuments; } });
+Object.defineProperty(exports, "chatWithDocument", { enumerable: true, get: function () { return documentApi_1.chatWithDocument; } });
+Object.defineProperty(exports, "listDocuments", { enumerable: true, get: function () { return documentApi_1.listDocuments; } });
+Object.defineProperty(exports, "deleteDocument", { enumerable: true, get: function () { return documentApi_1.deleteDocument; } });
+Object.defineProperty(exports, "getDocumentStats", { enumerable: true, get: function () { return documentApi_1.getDocumentStats; } });
+Object.defineProperty(exports, "createDocumentFolder", { enumerable: true, get: function () { return documentApi_1.createDocumentFolder; } });
+Object.defineProperty(exports, "listDocumentFolders", { enumerable: true, get: function () { return documentApi_1.listDocumentFolders; } });
+Object.defineProperty(exports, "rebuildDocumentIndex", { enumerable: true, get: function () { return documentApi_1.rebuildDocumentIndex; } });
 //# sourceMappingURL=index.js.map
