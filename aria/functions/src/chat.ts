@@ -7,6 +7,7 @@ import { validateISODatetime } from './tools/dateTimeResolver'
 import { ARIA_TOOLS, isAriaTool } from './tools/toolDefinitions'
 import { ActionEngine } from './action-engine'
 import { runIntelligencePipeline } from './intelligence'
+import { getPluginTools, executePluginTool } from './plugins'
 import type { ChatWithAriaRequest, ChatWithAriaResponse, ActionMetadata } from './types'
 
 const anthropicApiKey = defineSecret('ANTHROPIC_API_KEY')
@@ -80,12 +81,23 @@ export const chatWithAria = onCall(
       { role: 'user', content: message },
     ]
 
+    // Merge core ARIA tools with any plugin-contributed tools
+    const pluginToolDefs = await getPluginTools(db, userId).catch(() => [])
+    const allTools: Anthropic.Tool[] = [
+      ...ARIA_TOOLS,
+      ...pluginToolDefs.map((pt) => ({
+        name: pt.name,
+        description: pt.description,
+        input_schema: pt.inputSchema as Anthropic.Tool['input_schema'],
+      })),
+    ]
+
     // First Claude call — include tools so Claude can detect intent
     const firstResponse = await anthropic.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 1024,
       system: systemPrompt,
-      tools: ARIA_TOOLS,
+      tools: allTools,
       messages: claudeMessages,
     })
 
@@ -97,7 +109,25 @@ export const chatWithAria = onCall(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
       )
 
-      if (toolUseBlock && isAriaTool(toolUseBlock.name)) {
+      const isPluginTool = pluginToolDefs.some((pt) => pt.name === toolUseBlock?.name)
+
+      if (toolUseBlock && isPluginTool) {
+        const pluginResult = await executePluginTool(toolUseBlock.name, toolUseBlock.input as Record<string, unknown>, userId, db)
+        const toolResultContent = JSON.stringify(pluginResult)
+        actionResults.push({ name: toolUseBlock.name, success: pluginResult.success, actionId: toolUseBlock.id, message: pluginResult.error ?? 'Plugin tool executed' })
+
+        const secondResponse = await anthropic.messages.create({
+          model: 'claude-opus-4-8',
+          max_tokens: 512,
+          system: systemPrompt,
+          messages: [
+            ...claudeMessages,
+            { role: 'assistant', content: firstResponse.content },
+            { role: 'user', content: [{ type: 'tool_result' as const, tool_use_id: toolUseBlock.id, content: toolResultContent }] },
+          ],
+        })
+        reply = secondResponse.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('')
+      } else if (toolUseBlock && isAriaTool(toolUseBlock.name)) {
         const toolArgs = toolUseBlock.input as Record<string, unknown>
 
         // Validate datetime fields before passing to Action Engine

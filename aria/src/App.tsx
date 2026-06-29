@@ -10,6 +10,7 @@ import Vault from '@/pages/Vault'
 import Profile from '@/pages/Profile'
 import Login from '@/pages/auth/Login'
 import Signup from '@/pages/auth/Signup'
+import PluginDebug from '@/pages/PluginDebug'
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/vault" element={<Vault />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/devtools/plugins" element={<PluginDebug />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
