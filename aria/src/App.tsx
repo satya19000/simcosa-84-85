@@ -17,6 +17,7 @@ import MemoryGraphDashboard from '@/pages/MemoryGraphDashboard'
 import Documents from '@/pages/Documents'
 import DocumentSearch from '@/pages/DocumentSearch'
 import DocumentDevDashboard from '@/pages/devtools/DocumentDevDashboard'
+import CommunicationDashboard from '@/pages/devtools/CommunicationDashboard'
 
 export default function App() {
   return (
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/documents" element={<Documents />} />
           <Route path="/search" element={<DocumentSearch />} />
           <Route path="/devtools/documents" element={<DocumentDevDashboard />} />
+          <Route path="/devtools/communication" element={<CommunicationDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

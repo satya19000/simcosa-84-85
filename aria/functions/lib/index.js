@@ -33,7 +33,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rebuildDocumentIndex = exports.listDocumentFolders = exports.createDocumentFolder = exports.getDocumentStats = exports.deleteDocument = exports.listDocuments = exports.chatWithDocument = exports.searchDocuments = exports.ingestDocument = exports.listMemoryNodes = exports.upsertMemoryNode = exports.extractRelationships = exports.getMemoryGraphStats = exports.validateMemoryGraph = exports.rebuildMemoryIndex = exports.retrieveMemoryContext = exports.searchMemoryGraph = exports.buildMemoryFromChat = exports.buildMemoryFromReminder = exports.buildMemoryFromTask = exports.buildMemoryFromContact = exports.getAgentStatus = exports.runAgentGraph = exports.setWorkflowEnabled = exports.getWorkflowSchedules = exports.listWorkflows = exports.getWorkflowHistory = exports.runWorkflow = exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
+exports.getCommunicationStats = exports.searchCommunications = exports.generateAIReply = exports.generateConversationSummary = exports.analyzeConversationThread = exports.archiveConversationThread = exports.markThreadRead = exports.getConversationMessages = exports.listConversationThreads = exports.syncCommunicationProvider = exports.sendCommunicationMessage = exports.ingestCommunicationMessage = exports.listCommunicationProviders = exports.getProviderHealth = exports.rebuildDocumentIndex = exports.listDocumentFolders = exports.createDocumentFolder = exports.getDocumentStats = exports.deleteDocument = exports.listDocuments = exports.chatWithDocument = exports.searchDocuments = exports.ingestDocument = exports.listMemoryNodes = exports.upsertMemoryNode = exports.extractRelationships = exports.getMemoryGraphStats = exports.validateMemoryGraph = exports.rebuildMemoryIndex = exports.retrieveMemoryContext = exports.searchMemoryGraph = exports.buildMemoryFromChat = exports.buildMemoryFromReminder = exports.buildMemoryFromTask = exports.buildMemoryFromContact = exports.getAgentStatus = exports.runAgentGraph = exports.setWorkflowEnabled = exports.getWorkflowSchedules = exports.listWorkflows = exports.getWorkflowHistory = exports.runWorkflow = exports.getPluginStatus = exports.generateDailyBriefing = exports.processDueReminders = exports.sendTestNotification = exports.executeAction = exports.synthesizeSpeech = exports.transcribeAudio = exports.chatWithAria = void 0;
+exports.listScheduledMessages = exports.scheduleCommunicationMessage = exports.listCommunicationTemplates = exports.createCommunicationTemplate = void 0;
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin once
 admin.initializeApp();
@@ -84,4 +85,23 @@ Object.defineProperty(exports, "getDocumentStats", { enumerable: true, get: func
 Object.defineProperty(exports, "createDocumentFolder", { enumerable: true, get: function () { return documentApi_1.createDocumentFolder; } });
 Object.defineProperty(exports, "listDocumentFolders", { enumerable: true, get: function () { return documentApi_1.listDocumentFolders; } });
 Object.defineProperty(exports, "rebuildDocumentIndex", { enumerable: true, get: function () { return documentApi_1.rebuildDocumentIndex; } });
+var communicationApi_1 = require("./communicationApi");
+Object.defineProperty(exports, "getProviderHealth", { enumerable: true, get: function () { return communicationApi_1.getProviderHealth; } });
+Object.defineProperty(exports, "listCommunicationProviders", { enumerable: true, get: function () { return communicationApi_1.listCommunicationProviders; } });
+Object.defineProperty(exports, "ingestCommunicationMessage", { enumerable: true, get: function () { return communicationApi_1.ingestCommunicationMessage; } });
+Object.defineProperty(exports, "sendCommunicationMessage", { enumerable: true, get: function () { return communicationApi_1.sendCommunicationMessage; } });
+Object.defineProperty(exports, "syncCommunicationProvider", { enumerable: true, get: function () { return communicationApi_1.syncCommunicationProvider; } });
+Object.defineProperty(exports, "listConversationThreads", { enumerable: true, get: function () { return communicationApi_1.listConversationThreads; } });
+Object.defineProperty(exports, "getConversationMessages", { enumerable: true, get: function () { return communicationApi_1.getConversationMessages; } });
+Object.defineProperty(exports, "markThreadRead", { enumerable: true, get: function () { return communicationApi_1.markThreadRead; } });
+Object.defineProperty(exports, "archiveConversationThread", { enumerable: true, get: function () { return communicationApi_1.archiveConversationThread; } });
+Object.defineProperty(exports, "analyzeConversationThread", { enumerable: true, get: function () { return communicationApi_1.analyzeConversationThread; } });
+Object.defineProperty(exports, "generateConversationSummary", { enumerable: true, get: function () { return communicationApi_1.generateConversationSummary; } });
+Object.defineProperty(exports, "generateAIReply", { enumerable: true, get: function () { return communicationApi_1.generateAIReply; } });
+Object.defineProperty(exports, "searchCommunications", { enumerable: true, get: function () { return communicationApi_1.searchCommunications; } });
+Object.defineProperty(exports, "getCommunicationStats", { enumerable: true, get: function () { return communicationApi_1.getCommunicationStats; } });
+Object.defineProperty(exports, "createCommunicationTemplate", { enumerable: true, get: function () { return communicationApi_1.createCommunicationTemplate; } });
+Object.defineProperty(exports, "listCommunicationTemplates", { enumerable: true, get: function () { return communicationApi_1.listCommunicationTemplates; } });
+Object.defineProperty(exports, "scheduleCommunicationMessage", { enumerable: true, get: function () { return communicationApi_1.scheduleCommunicationMessage; } });
+Object.defineProperty(exports, "listScheduledMessages", { enumerable: true, get: function () { return communicationApi_1.listScheduledMessages; } });
 //# sourceMappingURL=index.js.map

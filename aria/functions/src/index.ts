@@ -43,3 +43,23 @@ export {
   listDocumentFolders,
   rebuildDocumentIndex,
 } from './documentApi'
+export {
+  getProviderHealth,
+  listCommunicationProviders,
+  ingestCommunicationMessage,
+  sendCommunicationMessage,
+  syncCommunicationProvider,
+  listConversationThreads,
+  getConversationMessages,
+  markThreadRead,
+  archiveConversationThread,
+  analyzeConversationThread,
+  generateConversationSummary,
+  generateAIReply,
+  searchCommunications,
+  getCommunicationStats,
+  createCommunicationTemplate,
+  listCommunicationTemplates,
+  scheduleCommunicationMessage,
+  listScheduledMessages,
+} from './communicationApi'
