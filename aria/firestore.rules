@@ -104,6 +104,53 @@ service cloud.firestore {
       allow write: if false; // Cloud Functions (admin SDK) only
     }
 
+    // ── Security / Multi-Tenant Platform (Phase 5.2) ──────────────
+    // All reads and writes for tenants/** go exclusively through
+    // securityApi.ts Cloud Functions, which use the Admin SDK (and so
+    // bypass these rules) and enforce tenant-membership + RBAC checks
+    // server-side via TenantEngine.requireIdentity / RBACEngine.
+    //
+    // Client-side direct Firestore access is intentionally denied for
+    // every subcollection here — there is no safe per-document rule we
+    // can express that reconstructs "does this identity belong to this
+    // tenant AND does its role include the right permission" without
+    // duplicating the RBAC engine's logic in security rules (which the
+    // task spec explicitly forbids: no duplicated permission logic).
+    // This is conservative-by-design: it trades client read performance
+    // for a single source of truth for authorization. If real-time listeners
+    // are ever needed here, the path forward is read-only rules scoped to
+    // `identities/{identityId}` matched by `request.auth.uid`, not a general
+    // tenant-wide allow.
+    match /tenants/{tenantId} {
+      allow read, write: if false; // Cloud Functions (Admin SDK) only
+
+      match /identities/{identityId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /roles/{roleId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /roleAssignments/{assignmentId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /policies/{policyId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /sessions/{sessionId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /groups/{groupId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /serviceAccounts/{serviceAccountId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      // Append-only audit log — no client read or write under any circumstance.
+      match /securityAudit/{eventId} {
+        allow read, write: if false; // Cloud Functions only; append-only via SecurityAudit.record()
+      }
+    }
+
     // ── Deny everything else ─────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

@@ -24,6 +24,7 @@ import ApprovalDashboard from '@/pages/devtools/ApprovalDashboard'
 import MissionControlDashboard from '@/pages/devtools/MissionControlDashboard'
 import Organization from '@/pages/Organization'
 import Workspace from '@/pages/Workspace'
+import SecurityDashboard from '@/pages/devtools/SecurityDashboard'
 
 export default function App() {
   return (
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="/devtools/finance" element={<FinanceDashboard />} />
           <Route path="/devtools/approvals" element={<ApprovalDashboard />} />
           <Route path="/devtools/mission-control" element={<MissionControlDashboard />} />
+          <Route path="/devtools/security" element={<SecurityDashboard />} />
           <Route path="/organization" element={<Organization />} />
           <Route path="/organization/:organizationId" element={<Organization />} />
           <Route path="/organization/:organizationId/workspace/:workspaceId" element={<Workspace />} />

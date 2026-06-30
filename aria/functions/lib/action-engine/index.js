@@ -37,4 +37,14 @@ require("./actions/RemoveMemberAction");
 require("./actions/AssignMissionAction");
 require("./actions/DelegateTaskAction");
 require("./actions/PostAnnouncementAction");
+require("./actions/CreateTenantAction");
+require("./actions/CreateRoleAction");
+require("./actions/AssignRoleAction");
+require("./actions/RevokeRoleAction");
+require("./actions/CreatePolicyAction");
+require("./actions/UpdatePolicyAction");
+require("./actions/RevokeSessionAction");
+require("./actions/CreateGroupAction");
+require("./actions/AddGroupMemberAction");
+require("./actions/RemoveGroupMemberAction");
 //# sourceMappingURL=index.js.map
