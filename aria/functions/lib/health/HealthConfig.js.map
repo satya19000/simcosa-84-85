@@ -1,0 +1,1 @@
+{"version":3,"file":"HealthConfig.js","sourceRoot":"","sources":["../../src/health/HealthConfig.ts"],"names":[],"mappings":";;;AAYa,QAAA,qBAAqB,GAAiB;IACjD,kBAAkB,EAAE,GAAG;IACvB,sBAAsB,EAAE,GAAG;IAC3B,2BAA2B,EAAE,IAAI;IACjC,4BAA4B,EAAE,IAAI;IAClC,mBAAmB,EAAE,EAAE;IACvB,sBAAsB,EAAE,CAAC;IACzB,wBAAwB,EAAE,EAAE;IAC5B,UAAU,EAAE,CAAC;IACb,YAAY,EAAE,IAAI;CACnB,CAAA"}
