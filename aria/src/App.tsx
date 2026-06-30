@@ -29,6 +29,8 @@ import Marketplace from '@/pages/Marketplace'
 import SkillDetail from '@/pages/SkillDetail'
 import MarketplaceDashboard from '@/pages/devtools/MarketplaceDashboard'
 import AIGatewayDashboard from '@/pages/devtools/AIGatewayDashboard'
+import ComputerControl from '@/pages/ComputerControl'
+import ComputerControlDashboard from '@/pages/devtools/ComputerControlDashboard'
 
 export default function App() {
   return (
@@ -70,6 +72,8 @@ export default function App() {
           <Route path="/marketplace/:skillId" element={<SkillDetail />} />
           <Route path="/devtools/marketplace" element={<MarketplaceDashboard />} />
           <Route path="/devtools/ai-gateway" element={<AIGatewayDashboard />} />
+          <Route path="/computer-control" element={<ComputerControl />} />
+          <Route path="/devtools/computer-control" element={<ComputerControlDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

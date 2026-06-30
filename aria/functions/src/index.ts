@@ -290,3 +290,16 @@ export {
   updateModelPolicy,
   chatWithAriaGateway,
 } from './aiGatewayApi'
+
+export {
+  listComputerCapabilities,
+  planComputerAction,
+  requestComputerApproval,
+  registerLocalAgent,
+  revokeLocalAgent,
+  listLocalAgents,
+  registerBrowserExtension,
+  revokeBrowserExtension,
+  listBrowserExtensions,
+  logComputerActionResult,
+} from './computerControlApi'

@@ -194,6 +194,43 @@ service cloud.firestore {
       match /aiFallbackEvents/{eventId} {
         allow read, write: if false; // Cloud Functions only; append-only via ModelFallbackManager.logFallbackEvent()
       }
+
+      // ── Computer Control (Phase 5.5) tenant-scoped collections ──────
+      // Conservative deny-by-default — same rationale as all prior
+      // tenants/{tenantId}/** blocks: all reads/writes for computer
+      // agents, sessions, actions, approvals, and audit go exclusively
+      // through computerControlApi.ts Cloud Functions (Admin SDK), which
+      // enforce tenant membership via TenantEngine.requireIdentity and
+      // RBAC via RBACEngine before any read or write.
+      //
+      // credentialAccess is unconditionally blocked at the engine layer
+      // (ComputerSafetyGuard) regardless of these rules. These rules
+      // add an additional layer of defence-in-depth: no client can
+      // read or write computer-control data directly, preventing any
+      // attempt to observe audit trails or spoof approval states from
+      // the client side.
+      match /computerAgents/{agentId} {
+        allow read, write: if false; // Cloud Functions only — local agent registrations (placeholder)
+      }
+      match /computerSessions/{sessionId} {
+        allow read, write: if false; // Cloud Functions only — computer control sessions
+      }
+      match /computerActions/{actionId} {
+        allow read, write: if false; // Cloud Functions only — planned/executed computer actions
+      }
+      match /computerApprovals/{approvalId} {
+        allow read, write: if false; // Cloud Functions only — computer action approvals
+      }
+      // Append-only audit log — mirrors securityAudit's contract.
+      match /computerAudit/{auditId} {
+        allow read, write: if false; // Cloud Functions only; append-only via ComputerAudit.record()
+      }
+      match /browserExtensions/{extensionId} {
+        allow read, write: if false; // Cloud Functions only — browser extension registrations (placeholder)
+      }
+      match /computerPolicies/{policyId} {
+        allow read, write: if false; // Cloud Functions only — computer control policies
+      }
     }
 
     // ── Marketplace catalog (Phase 5.3) — public read, CF-write-only ──
