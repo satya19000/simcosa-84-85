@@ -21,6 +21,7 @@ import CommunicationDashboard from '@/pages/devtools/CommunicationDashboard'
 import HealthDashboard from '@/pages/devtools/HealthDashboard'
 import FinanceDashboard from '@/pages/devtools/FinanceDashboard'
 import ApprovalDashboard from '@/pages/devtools/ApprovalDashboard'
+import MissionControlDashboard from '@/pages/devtools/MissionControlDashboard'
 
 export default function App() {
   return (
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="/devtools/health" element={<HealthDashboard />} />
           <Route path="/devtools/finance" element={<FinanceDashboard />} />
           <Route path="/devtools/approvals" element={<ApprovalDashboard />} />
+          <Route path="/devtools/mission-control" element={<MissionControlDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

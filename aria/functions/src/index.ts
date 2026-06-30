@@ -181,3 +181,27 @@ export {
   rollbackApprovalRequest,
   runApprovalScheduledChecks,
 } from './delegationApi'
+
+export {
+  createMission,
+  getMission,
+  listMissions,
+  updateMission,
+  activateMission,
+  pauseMission,
+  abandonMission,
+  listMissionTasks,
+  addMissionTask,
+  completeMissionTask,
+  setMissionTaskStatus,
+  requestMissionTaskApproval,
+  getMissionTaskApprovalStatus,
+  listMissionRecommendations,
+  acceptMissionRecommendation,
+  dismissMissionRecommendation,
+  getMissionPredictions,
+  getMissionLearningSnapshots,
+  runMissionPlanningCycle,
+  getMissionStats,
+  listMissionHistory,
+} from './missionControlApi'
