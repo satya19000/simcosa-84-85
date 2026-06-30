@@ -28,6 +28,7 @@ import SecurityDashboard from '@/pages/devtools/SecurityDashboard'
 import Marketplace from '@/pages/Marketplace'
 import SkillDetail from '@/pages/SkillDetail'
 import MarketplaceDashboard from '@/pages/devtools/MarketplaceDashboard'
+import AIGatewayDashboard from '@/pages/devtools/AIGatewayDashboard'
 
 export default function App() {
   return (
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="/marketplace" element={<Marketplace />} />
           <Route path="/marketplace/:skillId" element={<SkillDetail />} />
           <Route path="/devtools/marketplace" element={<MarketplaceDashboard />} />
+          <Route path="/devtools/ai-gateway" element={<AIGatewayDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

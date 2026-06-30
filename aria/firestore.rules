@@ -170,6 +170,30 @@ service cloud.firestore {
       match /skillAudit/{auditId} {
         allow read, write: if false; // Cloud Functions only; append-only via SkillInstaller.writeAuditEvent()
       }
+
+      // ── AI Gateway (Phase 5.4) tenant-scoped collections ────────
+      // Same conservative deny-by-default rationale as the rest of
+      // tenants/{tenantId}/** above: all reads/writes for AI usage,
+      // policy, provider health, and fallback events go exclusively
+      // through aiGatewayApi.ts Cloud Functions (Admin SDK), which
+      // enforce tenant membership via TenantEngine.requireIdentity and
+      // permission checks via RBACEngine (security.manage for policy
+      // mutation) — never reconstructed here. No client ever reads or
+      // writes these paths directly, which also keeps usage/cost data
+      // and provider health signals from leaking between tenants.
+      match /aiUsage/{usageId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /aiPolicies/{policyId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /aiProviderHealth/{providerId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      // Append-only fallback-event log — mirrors securityAudit's contract.
+      match /aiFallbackEvents/{eventId} {
+        allow read, write: if false; // Cloud Functions only; append-only via ModelFallbackManager.logFallbackEvent()
+      }
     }
 
     // ── Marketplace catalog (Phase 5.3) — public read, CF-write-only ──
@@ -199,6 +223,24 @@ service cloud.firestore {
     }
     match /marketplace/reviews {
       match /reviews/{reviewId} {
+        allow read: if isAuthenticated();
+        allow write: if false; // Cloud Functions only
+      }
+    }
+
+    // ── AI Gateway global catalog (Phase 5.4) — public read, CF-write-only ──
+    // Mirrors the marketplace catalog section above exactly: model/provider
+    // metadata is discoverable by any authenticated user (needed for the
+    // AIGatewayDashboard's model catalog table and provider health cards);
+    // all mutations go exclusively through aiGatewayApi.ts Cloud Functions.
+    match /aiGateway/models {
+      match /models/{modelId} {
+        allow read: if isAuthenticated();
+        allow write: if false; // Cloud Functions only
+      }
+    }
+    match /aiGateway/providers {
+      match /providers/{providerId} {
         allow read: if isAuthenticated();
         allow write: if false; // Cloud Functions only
       }

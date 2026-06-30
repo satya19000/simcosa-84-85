@@ -281,3 +281,12 @@ export {
   getSkillDetail,
   getSkillAnalytics,
 } from './marketplaceApi'
+
+export {
+  listAIProviders,
+  listAIModels,
+  testAIProvider,
+  getAIUsage,
+  updateModelPolicy,
+  chatWithAriaGateway,
+} from './aiGatewayApi'
