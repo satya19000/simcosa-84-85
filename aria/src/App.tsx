@@ -19,6 +19,7 @@ import DocumentSearch from '@/pages/DocumentSearch'
 import DocumentDevDashboard from '@/pages/devtools/DocumentDevDashboard'
 import CommunicationDashboard from '@/pages/devtools/CommunicationDashboard'
 import HealthDashboard from '@/pages/devtools/HealthDashboard'
+import FinanceDashboard from '@/pages/devtools/FinanceDashboard'
 
 export default function App() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/devtools/documents" element={<DocumentDevDashboard />} />
           <Route path="/devtools/communication" element={<CommunicationDashboard />} />
           <Route path="/devtools/health" element={<HealthDashboard />} />
+          <Route path="/devtools/finance" element={<FinanceDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
