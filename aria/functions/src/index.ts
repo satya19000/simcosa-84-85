@@ -156,3 +156,28 @@ export {
   listFinanceSuggestions,
   dismissFinanceSuggestion,
 } from './financeApi'
+
+export {
+  approveRequest,
+  bulkApproveRequests,
+  bulkRejectRequests,
+  cancelRequest,
+  createApprovalRequest,
+  delegateRequest,
+  getApprovalMetrics,
+  getApprovalPolicyBands,
+  getApprovalRequest,
+  getApprovalStats,
+  listApprovalHistory,
+  listApprovalRequests,
+  listApprovalTemplates,
+  listDelegatedApprovals,
+  listExecutedApprovals,
+  listExpiredApprovals,
+  listPendingApprovals,
+  listRejectedApprovals,
+  listUrgentApprovals,
+  rejectRequest,
+  rollbackApprovalRequest,
+  runApprovalScheduledChecks,
+} from './delegationApi'
