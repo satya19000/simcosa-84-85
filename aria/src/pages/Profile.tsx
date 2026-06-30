@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LogOut, Bell, Globe, Shield, CreditCard, ChevronRight, Moon, Mic, BellOff, Users, Volume2, Play, Building2 } from 'lucide-react'
+import { LogOut, Bell, Globe, Shield, CreditCard, ChevronRight, Moon, Mic, BellOff, Users, Volume2, Play, Building2, Store } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { useAuthStore } from '@/store/authStore'
 import { auth } from '@/lib/firebase'
@@ -180,6 +180,21 @@ export default function Profile() {
         <div className="flex-1">
           <p className="text-sm text-white">Organization &amp; Teams</p>
           <p className="text-xs text-white/30">Workspaces, members &amp; shared missions</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-white/20" />
+      </button>
+
+      {/* Marketplace shortcut */}
+      <button
+        onClick={() => navigate('/marketplace')}
+        className="w-full flex items-center gap-3 glass border border-white/10 rounded-2xl px-4 py-3.5 hover:bg-white/5 transition-colors text-left"
+      >
+        <div className="w-8 h-8 rounded-lg bg-[#06B6D4]/10 flex items-center justify-center flex-shrink-0">
+          <Store className="w-4 h-4 text-[#06B6D4]" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm text-white">Skill Marketplace</p>
+          <p className="text-xs text-white/30">Browse, install &amp; manage AI skills</p>
         </div>
         <ChevronRight className="w-4 h-4 text-white/20" />
       </button>

@@ -47,4 +47,16 @@ require("./actions/RevokeSessionAction");
 require("./actions/CreateGroupAction");
 require("./actions/AddGroupMemberAction");
 require("./actions/RemoveGroupMemberAction");
+require("./actions/PublishSkillAction");
+require("./actions/UpdateSkillAction");
+require("./actions/SubmitSkillForReviewAction");
+require("./actions/ApproveSkillAction");
+require("./actions/RejectSkillAction");
+require("./actions/InstallSkillAction");
+require("./actions/UninstallSkillAction");
+require("./actions/EnableSkillAction");
+require("./actions/DisableSkillAction");
+require("./actions/ReviewSkillAction");
+require("./actions/GrantSkillPermissionAction");
+require("./actions/RevokeSkillPermissionAction");
 //# sourceMappingURL=index.js.map

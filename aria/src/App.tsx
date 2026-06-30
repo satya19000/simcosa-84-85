@@ -25,6 +25,9 @@ import MissionControlDashboard from '@/pages/devtools/MissionControlDashboard'
 import Organization from '@/pages/Organization'
 import Workspace from '@/pages/Workspace'
 import SecurityDashboard from '@/pages/devtools/SecurityDashboard'
+import Marketplace from '@/pages/Marketplace'
+import SkillDetail from '@/pages/SkillDetail'
+import MarketplaceDashboard from '@/pages/devtools/MarketplaceDashboard'
 
 export default function App() {
   return (
@@ -62,6 +65,9 @@ export default function App() {
           <Route path="/organization" element={<Organization />} />
           <Route path="/organization/:organizationId" element={<Organization />} />
           <Route path="/organization/:organizationId/workspace/:workspaceId" element={<Workspace />} />
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/marketplace/:skillId" element={<SkillDetail />} />
+          <Route path="/devtools/marketplace" element={<MarketplaceDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

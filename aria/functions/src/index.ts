@@ -262,3 +262,22 @@ export {
   listAuditEvents,
   getSecurityAnalytics,
 } from './securityApi'
+
+export {
+  publishSkill,
+  updateSkill,
+  submitSkillForReview,
+  approveSkill,
+  rejectSkill,
+  installSkill,
+  uninstallSkill,
+  enableSkill,
+  disableSkill,
+  listInstalledSkills,
+  grantSkillPermission,
+  revokeSkillPermission,
+  reviewSkill,
+  listMarketplaceCatalog,
+  getSkillDetail,
+  getSkillAnalytics,
+} from './marketplaceApi'

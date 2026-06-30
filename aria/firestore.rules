@@ -149,6 +149,59 @@ service cloud.firestore {
       match /securityAudit/{eventId} {
         allow read, write: if false; // Cloud Functions only; append-only via SecurityAudit.record()
       }
+
+      // ── Marketplace (Phase 5.3) tenant-scoped collections ───────
+      // Same conservative deny-by-default rationale as the rest of
+      // tenants/{tenantId}/** above: all reads/writes for installed
+      // skills, permission grants, usage, and audit go exclusively
+      // through marketplaceApi.ts Cloud Functions (Admin SDK), which
+      // enforce tenant membership via TenantEngine.requireIdentity and
+      // permission checks via RBACEngine — never reconstructed here.
+      match /installedSkills/{installationId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /skillPermissions/{permissionId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      match /skillUsage/{usageId} {
+        allow read, write: if false; // Cloud Functions only
+      }
+      // Append-only audit log — mirrors securityAudit's contract.
+      match /skillAudit/{auditId} {
+        allow read, write: if false; // Cloud Functions only; append-only via SkillInstaller.writeAuditEvent()
+      }
+    }
+
+    // ── Marketplace catalog (Phase 5.3) — public read, CF-write-only ──
+    // Marketplace listings are discoverable by any authenticated user;
+    // all mutations (publish/approve/reject/update) go exclusively
+    // through marketplaceApi.ts Cloud Functions using the Admin SDK.
+    // Paths mirror MarketplaceRegistry.ts exactly: a fixed top-level
+    // "container" doc (items/publishers/categories/reviews) holding a
+    // same-named subcollection of records.
+    match /marketplace/items {
+      match /items/{itemId} {
+        allow read: if isAuthenticated();
+        allow write: if false; // Cloud Functions only
+      }
+    }
+    match /marketplace/publishers {
+      match /publishers/{publisherId} {
+        allow read: if isAuthenticated();
+        allow write: if false; // Cloud Functions only
+      }
+    }
+    match /marketplace/categories {
+      match /categories/{categoryId} {
+        allow read: if isAuthenticated();
+        allow write: if false; // Cloud Functions only
+      }
+    }
+    match /marketplace/reviews {
+      match /reviews/{reviewId} {
+        allow read: if isAuthenticated();
+        allow write: if false; // Cloud Functions only
+      }
     }
 
     // ── Deny everything else ─────────────────────────────────────
