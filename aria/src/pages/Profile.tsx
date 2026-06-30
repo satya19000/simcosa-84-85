@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LogOut, Bell, Globe, Shield, CreditCard, ChevronRight, Moon, Mic, BellOff, Users, Volume2, Play } from 'lucide-react'
+import { LogOut, Bell, Globe, Shield, CreditCard, ChevronRight, Moon, Mic, BellOff, Users, Volume2, Play, Building2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { useAuthStore } from '@/store/authStore'
 import { auth } from '@/lib/firebase'
@@ -165,6 +165,21 @@ export default function Profile() {
         <div className="flex-1">
           <p className="text-sm text-white">Relationship Memory</p>
           <p className="text-xs text-white/30">Contacts &amp; people ARIA knows about</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-white/20" />
+      </button>
+
+      {/* Organization shortcut */}
+      <button
+        onClick={() => navigate('/organization')}
+        className="w-full flex items-center gap-3 glass border border-white/10 rounded-2xl px-4 py-3.5 hover:bg-white/5 transition-colors text-left"
+      >
+        <div className="w-8 h-8 rounded-lg bg-[#7C3AED]/10 flex items-center justify-center flex-shrink-0">
+          <Building2 className="w-4 h-4 text-[#7C3AED]" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm text-white">Organization &amp; Teams</p>
+          <p className="text-xs text-white/30">Workspaces, members &amp; shared missions</p>
         </div>
         <ChevronRight className="w-4 h-4 text-white/20" />
       </button>

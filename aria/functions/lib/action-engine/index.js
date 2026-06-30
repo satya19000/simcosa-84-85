@@ -28,4 +28,13 @@ require("./actions/UpdateContactAction");
 require("./actions/DeleteContactAction");
 require("./actions/AddRelationshipNoteAction");
 require("./actions/SearchContactsAction");
+require("./actions/CreateOrganizationAction");
+require("./actions/UpdateOrganizationAction");
+require("./actions/CreateWorkspaceAction");
+require("./actions/InviteMemberAction");
+require("./actions/AcceptInvitationAction");
+require("./actions/RemoveMemberAction");
+require("./actions/AssignMissionAction");
+require("./actions/DelegateTaskAction");
+require("./actions/PostAnnouncementAction");
 //# sourceMappingURL=index.js.map
