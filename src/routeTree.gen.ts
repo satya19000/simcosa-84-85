@@ -25,6 +25,7 @@ import { Route as AuthenticatedDirectoryRouteImport } from './routes/_authentica
 import { Route as AuthenticatedBlogsRouteImport } from './routes/_authenticated/blogs'
 import { Route as AuthenticatedAnnouncementsRouteImport } from './routes/_authenticated/announcements'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedMembersSlugRouteImport } from './routes/_authenticated/members.$slug'
 import { Route as AuthenticatedBlogsIdRouteImport } from './routes/_authenticated/blogs.$id'
 
 const AuthRoute = AuthRouteImport.update({
@@ -108,6 +109,12 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedMembersSlugRoute =
+  AuthenticatedMembersSlugRouteImport.update({
+    id: '/members/$slug',
+    path: '/members/$slug',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedBlogsIdRoute = AuthenticatedBlogsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -131,6 +138,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/support': typeof AuthenticatedSupportRoute
   '/blogs/$id': typeof AuthenticatedBlogsIdRoute
+  '/members/$slug': typeof AuthenticatedMembersSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -149,6 +157,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/support': typeof AuthenticatedSupportRoute
   '/blogs/$id': typeof AuthenticatedBlogsIdRoute
+  '/members/$slug': typeof AuthenticatedMembersSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -169,6 +178,7 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/support': typeof AuthenticatedSupportRoute
   '/_authenticated/blogs/$id': typeof AuthenticatedBlogsIdRoute
+  '/_authenticated/members/$slug': typeof AuthenticatedMembersSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/support'
     | '/blogs/$id'
+    | '/members/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/support'
     | '/blogs/$id'
+    | '/members/$slug'
   id:
     | '__root__'
     | '/'
@@ -226,6 +238,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/support'
     | '/_authenticated/blogs/$id'
+    | '/_authenticated/members/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -349,6 +362,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/members/$slug': {
+      id: '/_authenticated/members/$slug'
+      path: '/members/$slug'
+      fullPath: '/members/$slug'
+      preLoaderRoute: typeof AuthenticatedMembersSlugRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/blogs/$id': {
       id: '/_authenticated/blogs/$id'
       path: '/$id'
@@ -383,6 +403,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPendingApprovalRoute: typeof AuthenticatedPendingApprovalRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedSupportRoute: typeof AuthenticatedSupportRoute
+  AuthenticatedMembersSlugRoute: typeof AuthenticatedMembersSlugRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -398,6 +419,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPendingApprovalRoute: AuthenticatedPendingApprovalRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedSupportRoute: AuthenticatedSupportRoute,
+  AuthenticatedMembersSlugRoute: AuthenticatedMembersSlugRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

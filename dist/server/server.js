@@ -190,6 +190,9 @@ async function sendNewMemberAdminNotification(adminEmails, member) {
     console.warn("[email] failed to send new-member admin notification:", err);
   }
 }
+function toSlug(name) {
+  return name.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
 async function upsertUserFromClaims(claims) {
   const id = claims.sub;
   const email = claims.email ?? null;
@@ -212,12 +215,21 @@ async function upsertUserFromClaims(claims) {
          updated_at = now()`,
       [id, email, firstName, lastName, image]
     );
+    const baseSlug = toSlug(fullName) || "member";
     const profileInsert = await c.query(
-      `INSERT INTO profiles (id, full_name, email, photo_url, approved, approval_status)
-       VALUES ($1, $2, $3, $4, false, 'pending')
+      `INSERT INTO profiles (id, full_name, email, photo_url, approved, approval_status, slug)
+       VALUES ($1, $2, $3, $4, false, 'pending',
+         (SELECT s FROM (
+           SELECT $5 AS s WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE slug = $5)
+           UNION ALL
+           SELECT $5 || '-' || n FROM generate_series(2, 999) n
+             WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE slug = $5 || '-' || n)
+           LIMIT 1
+         ) sub)
+       )
        ON CONFLICT (id) DO NOTHING
        RETURNING id`,
-      [id, fullName, email, image]
+      [id, fullName, email, image, baseSlug]
     );
     await c.query(
       `INSERT INTO user_roles (user_id, role) VALUES ($1, 'member')
@@ -240,7 +252,7 @@ async function upsertUserFromClaims(claims) {
 }
 const PROFILE_COLUMNS = `id, full_name, photo_url, phone, whatsapp, email, location, profession, bio,
   spouse_name, clinic_or_hospital, country_state, batch_confirmed, approved, approval_status,
-  approved_by, approved_at, rejection_reason, created_at`;
+  approved_by, approved_at, rejection_reason, created_at, slug`;
 async function getProfile(userId) {
   const res = await query(
     `SELECT ${PROFILE_COLUMNS} FROM profiles WHERE id = $1`,
@@ -518,7 +530,7 @@ async function serveEventCover(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-CIO3YBdc.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-Dnlq8-1X.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
@@ -576,5 +588,6 @@ export {
   parseCookies as p,
   query as q,
   renderErrorPage as r,
+  toSlug as t,
   withTransaction as w
 };

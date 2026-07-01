@@ -91,6 +91,9 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 CREATE INDEX IF NOT EXISTS idx_profiles_approval_status ON profiles (approval_status);
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles (email);
+-- Member personal blog slug (URL-safe, unique, derived from full_name).
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slug text;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_slug ON profiles(slug) WHERE slug IS NOT NULL;
 
 -- Profile photo binary storage.
 CREATE TABLE IF NOT EXISTS profile_photos (
@@ -359,6 +362,32 @@ CREATE TABLE IF NOT EXISTS blog_comments (
   body text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- =========================
+-- MEMBER PERSONAL BLOGS
+-- =========================
+-- One row per content item (text post, photo, video, file, etc.) on a member's personal page.
+-- category matches the tab: memories | travel | friends | family | poems | thoughts | photos | videos | files
+CREATE TABLE IF NOT EXISTS member_blog_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id varchar REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  created_by varchar REFERENCES users(id) NOT NULL,
+  category text NOT NULL,
+  title text,
+  body text,
+  file_url text,
+  fb_storage_path text,
+  file_name text,
+  mime_type text,
+  file_size bigint,
+  attachment_type text,
+  sort_order integer NOT NULL DEFAULT 0,
+  visibility text NOT NULL DEFAULT 'members',
+  is_published boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_member_blog_items_member_cat ON member_blog_items(member_id, category, sort_order, created_at DESC);
 
 -- =========================
 -- MAKE FIRST ADMIN

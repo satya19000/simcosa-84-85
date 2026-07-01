@@ -33,6 +33,7 @@ export interface ProfileRow {
   approved_at: string | null;
   rejection_reason: string | null;
   created_at: string;
+  slug: string | null;
 }
 
 export interface AuthUser {

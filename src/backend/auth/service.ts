@@ -24,6 +24,18 @@ export interface ProfileRow {
   approved_at: string | null;
   rejection_reason: string | null;
   created_at: string;
+  slug: string | null;
+}
+
+/** Generate a URL-safe slug from a full name (deterministic, no randomness). */
+export function toSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 export interface AuthUser {
@@ -69,12 +81,21 @@ export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
       [id, email, firstName, lastName, image],
     );
 
+    const baseSlug = toSlug(fullName) || "member";
     const profileInsert = await c.query(
-      `INSERT INTO profiles (id, full_name, email, photo_url, approved, approval_status)
-       VALUES ($1, $2, $3, $4, false, 'pending')
+      `INSERT INTO profiles (id, full_name, email, photo_url, approved, approval_status, slug)
+       VALUES ($1, $2, $3, $4, false, 'pending',
+         (SELECT s FROM (
+           SELECT $5 AS s WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE slug = $5)
+           UNION ALL
+           SELECT $5 || '-' || n FROM generate_series(2, 999) n
+             WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE slug = $5 || '-' || n)
+           LIMIT 1
+         ) sub)
+       )
        ON CONFLICT (id) DO NOTHING
        RETURNING id`,
-      [id, fullName, email, image],
+      [id, fullName, email, image, baseSlug],
     );
 
     await c.query(
@@ -106,7 +127,7 @@ export async function upsertUserFromClaims(claims: AuthClaims): Promise<void> {
 
 export const PROFILE_COLUMNS = `id, full_name, photo_url, phone, whatsapp, email, location, profession, bio,
   spouse_name, clinic_or_hospital, country_state, batch_confirmed, approved, approval_status,
-  approved_by, approved_at, rejection_reason, created_at`;
+  approved_by, approved_at, rejection_reason, created_at, slug`;
 
 export async function getProfile(userId: string): Promise<ProfileRow | null> {
   const res = await query<ProfileRow>(

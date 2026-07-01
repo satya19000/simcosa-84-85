@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { listMembers } from "@/api/members";
-import { Mail, Phone, MessageCircle, MapPin, Briefcase, Search, Users } from "lucide-react";
+import { Mail, Phone, MessageCircle, MapPin, Briefcase, Search, Users, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
@@ -121,6 +121,16 @@ function Directory() {
                   </a>
                 )}
                 {m.bio && <p className="text-gray-400 text-xs italic pt-1 line-clamp-2">{m.bio}</p>}
+                {m.slug && (
+                  <Link
+                    to="/members/$slug"
+                    params={{ slug: m.slug }}
+                    className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700 transition-colors"
+                  >
+                    <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                    View Blog
+                  </Link>
+                )}
               </div>
             </div>
           ))}
