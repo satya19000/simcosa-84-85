@@ -1,23 +1,83 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listMembers } from "@/api/members";
-import { Mail, Phone, MessageCircle, MapPin, Briefcase, Search, Users, BookOpen } from "lucide-react";
+import { populateMemberSlugs } from "@/api/memberBlogs";
+import { Mail, Phone, MessageCircle, MapPin, Briefcase, Search, Users, BookOpen, Copy, Check, AlertTriangle, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
+import { useAuth } from "@/lib/auth";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/directory")({
   head: () => ({ meta: [{ title: "Members Directory — SIMCOSA 84–85" }] }),
   component: Directory,
 });
 
+function CopyBlogUrl({ slug }: { slug: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    const url = `${window.location.origin}/members/${slug}`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true);
+        toast.success("Blog link copied");
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => fallbackCopy(url));
+    } else {
+      fallbackCopy(url);
+    }
+  }
+
+  function fallbackCopy(url: string) {
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    setCopied(true);
+    toast.success("Blog link copied");
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label="Copy blog URL"
+      className="flex items-center gap-1 text-gray-400 hover:text-amber-600 transition-colors"
+      title="Copy blog URL"
+    >
+      {copied
+        ? <Check className="h-3.5 w-3.5 text-emerald-500" />
+        : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
 function Directory() {
   const [search, setSearch] = useState("");
   const [lbIndex, setLbIndex] = useState<number | null>(null);
+  const { isAdmin, isOwner } = useAuth();
+  const canAdmin = isAdmin || isOwner;
+  const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["directory"],
     queryFn: () => listMembers(),
+  });
+
+  const generateSlugsMutation = useMutation({
+    mutationFn: () => populateMemberSlugs({ data: undefined }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["directory"] });
+      toast.success(`Generated ${result.updated} blog URL${result.updated !== 1 ? "s" : ""}`);
+    },
+    onError: () => toast.error("Failed to generate blog URLs"),
   });
 
   const filtered = data?.filter(m =>
@@ -40,6 +100,8 @@ function Directory() {
     "bg-purple-100 text-purple-700", "bg-orange-100 text-orange-700",
   ];
 
+  const missingSlugCount = canAdmin ? (data?.filter(m => !m.slug).length ?? 0) : 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
       {/* Header */}
@@ -48,14 +110,27 @@ function Directory() {
           <p className="text-amber-600 font-bold text-sm uppercase tracking-widest mb-2">Batch Family</p>
           <h1>Members Directory</h1>
           <p className="text-gray-500 mt-2 text-lg">Visible only to approved batchmates — find and connect with your classmates.</p>
-          <div className="relative mt-6 max-w-md">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, city, profession…"
-              className="pl-12 h-12 text-base rounded-xl border-amber-200 focus:border-amber-400"
-            />
+          <div className="flex flex-wrap items-end gap-4 mt-6">
+            <div className="relative max-w-md flex-1 min-w-48">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by name, city, profession…"
+                className="pl-12 h-12 text-base rounded-xl border-amber-200 focus:border-amber-400"
+              />
+            </div>
+            {canAdmin && missingSlugCount > 0 && (
+              <button
+                type="button"
+                onClick={() => generateSlugsMutation.mutate()}
+                disabled={generateSlugsMutation.isPending}
+                className="flex items-center gap-2 px-4 h-12 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-100 transition-colors disabled:opacity-60"
+              >
+                <RefreshCw className={`h-4 w-4 ${generateSlugsMutation.isPending ? "animate-spin" : ""}`} />
+                Generate Blog URLs ({missingSlugCount} missing)
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -121,16 +196,28 @@ function Directory() {
                   </a>
                 )}
                 {m.bio && <p className="text-gray-400 text-xs italic pt-1 line-clamp-2">{m.bio}</p>}
-                {m.slug && (
-                  <Link
-                    to="/members/$slug"
-                    params={{ slug: m.slug }}
-                    className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700 transition-colors"
-                  >
-                    <BookOpen className="h-3.5 w-3.5 shrink-0" />
-                    View Blog
-                  </Link>
-                )}
+
+                {m.slug ? (
+                  <div className="mt-3 pt-3 border-t border-amber-50">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        to="/members/$slug"
+                        params={{ slug: m.slug }}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700 transition-colors"
+                      >
+                        <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                        View Blog
+                      </Link>
+                      <CopyBlogUrl slug={m.slug} />
+                    </div>
+                    <p className="mt-1 text-[10px] text-gray-400 font-mono truncate">/members/{m.slug}</p>
+                  </div>
+                ) : canAdmin ? (
+                  <div className="mt-3 pt-3 border-t border-amber-50 flex items-center gap-1.5 text-xs text-amber-500">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    Blog URL missing
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
