@@ -52,6 +52,14 @@ export interface EditMemberBlogItemInput {
   is_published?: boolean | null;
 }
 
+export interface MemberStorageUsage {
+  total_bytes: number;
+  file_count: number;
+  photo_count: number;
+  video_count: number;
+  doc_count: number;
+}
+
 /** Look up a member's public profile by slug. Returns null if not found or not approved. */
 export const getMemberBySlug = createServerFn({ method: "GET" })
   .middleware([requireApproved])
@@ -86,6 +94,44 @@ export const listMemberBlogItems = createServerFn({ method: "GET" })
     return res.rows;
   });
 
+/**
+ * Storage usage for a member's blog — total bytes consumed and per-type counts.
+ * Only the member themselves or an admin can query.
+ */
+export const getMemberStorageUsage = createServerFn({ method: "GET" })
+  .middleware([requireApproved])
+  .inputValidator((d: { member_id: string }) => d)
+  .handler(async ({ data, context }): Promise<MemberStorageUsage> => {
+    const admin = await isAdmin(context.userId);
+    const isOwn = context.userId === data.member_id;
+    if (!isOwn && !admin) throw new Error("Not authorized");
+
+    const res = await query<{
+      total_bytes: string;
+      file_count: string;
+      photo_count: string;
+      video_count: string;
+      doc_count: string;
+    }>(
+      `SELECT
+        COALESCE(SUM(file_size), 0) AS total_bytes,
+        COUNT(*) FILTER (WHERE file_url IS NOT NULL)::int AS file_count,
+        COUNT(*) FILTER (WHERE attachment_type = 'photo')::int AS photo_count,
+        COUNT(*) FILTER (WHERE attachment_type = 'video')::int AS video_count,
+        COUNT(*) FILTER (WHERE attachment_type = 'file')::int AS doc_count
+       FROM member_blog_items WHERE member_id = $1`,
+      [data.member_id],
+    );
+    const r = res.rows[0];
+    return {
+      total_bytes: Number(r.total_bytes),
+      file_count: Number(r.file_count),
+      photo_count: Number(r.photo_count),
+      video_count: Number(r.video_count),
+      doc_count: Number(r.doc_count),
+    };
+  });
+
 /** Add a new item to a member's blog. Only the member or an admin can post. */
 export const addMemberBlogItem = createServerFn({ method: "POST" })
   .middleware([requireApproved])
@@ -95,6 +141,19 @@ export const addMemberBlogItem = createServerFn({ method: "POST" })
     if (context.userId !== data.member_id && !admin) {
       throw new Error("Not authorized");
     }
+
+    // Duplicate-file guard: same member + file_name + file_size + mime_type.
+    if (data.file_name && data.file_size && data.mime_type) {
+      const dup = await query(
+        `SELECT 1 FROM member_blog_items
+         WHERE member_id = $1 AND file_name = $2 AND file_size = $3 AND mime_type = $4 LIMIT 1`,
+        [data.member_id, data.file_name, data.file_size, data.mime_type],
+      );
+      if (dup.rowCount! > 0) {
+        throw new Error(`Duplicate file skipped: ${data.file_name}`);
+      }
+    }
+
     const res = await query<MemberBlogItem>(
       `INSERT INTO member_blog_items
         (member_id, created_by, category, title, body, file_url, fb_storage_path, file_name, mime_type, file_size, attachment_type, visibility, is_published)
@@ -216,7 +275,7 @@ export const populateMemberSlugs = createServerFn({ method: "POST" })
     return { updated };
   });
 
-/** Admin: list all approved members with their blog item counts. */
+/** Admin: list all approved members with storage usage and blog item counts. */
 export const adminListMemberBlogSummary = createServerFn({ method: "GET" })
   .middleware([requireAdmin])
   .handler(async () => {
@@ -226,14 +285,16 @@ export const adminListMemberBlogSummary = createServerFn({ method: "GET" })
       slug: string | null;
       photo_url: string | null;
       item_count: number;
+      total_storage_bytes: number;
     }>(
       `SELECT p.id, p.full_name, p.slug, p.photo_url,
-              COUNT(m.id)::int AS item_count
+              COUNT(m.id)::int AS item_count,
+              COALESCE(SUM(m.file_size), 0)::bigint AS total_storage_bytes
        FROM profiles p
        LEFT JOIN member_blog_items m ON m.member_id = p.id
        WHERE p.approval_status = 'approved'
        GROUP BY p.id, p.full_name, p.slug, p.photo_url
-       ORDER BY p.full_name ASC`,
+       ORDER BY total_storage_bytes DESC, p.full_name ASC`,
     );
     return res.rows;
   });

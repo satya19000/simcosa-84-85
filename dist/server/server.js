@@ -530,7 +530,7 @@ async function serveEventCover(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-Dnlq8-1X.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-DxzLTJPN.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
