@@ -184,6 +184,21 @@ export default function Profile() {
         <ChevronRight className="w-4 h-4 text-white/20" />
       </button>
 
+      {/* Meetings shortcut — Phase 5.7 */}
+      <button
+        onClick={() => navigate('/meetings')}
+        className="w-full flex items-center gap-3 glass border border-white/10 rounded-2xl px-4 py-3.5 hover:bg-white/5 transition-colors text-left"
+      >
+        <div className="w-8 h-8 rounded-lg bg-[#7C3AED]/10 flex items-center justify-center flex-shrink-0">
+          <Mic className="w-4 h-4 text-[#7C3AED]" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm text-white">Meeting Agent</p>
+          <p className="text-xs text-white/30">Voice notes, calls &amp; meeting transcription</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-white/20" />
+      </button>
+
       {/* Marketplace shortcut */}
       <button
         onClick={() => navigate('/marketplace')}

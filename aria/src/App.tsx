@@ -31,6 +31,9 @@ import MarketplaceDashboard from '@/pages/devtools/MarketplaceDashboard'
 import AIGatewayDashboard from '@/pages/devtools/AIGatewayDashboard'
 import ComputerControl from '@/pages/ComputerControl'
 import ComputerControlDashboard from '@/pages/devtools/ComputerControlDashboard'
+import MeetingAgent from '@/pages/MeetingAgent'
+import MeetingDetail from '@/pages/MeetingDetail'
+import MeetingAgentDashboard from '@/pages/devtools/MeetingAgentDashboard'
 
 export default function App() {
   return (
@@ -74,6 +77,10 @@ export default function App() {
           <Route path="/devtools/ai-gateway" element={<AIGatewayDashboard />} />
           <Route path="/computer-control" element={<ComputerControl />} />
           <Route path="/devtools/computer-control" element={<ComputerControlDashboard />} />
+          {/* Phase 5.7 — Meeting Agent */}
+          <Route path="/meetings" element={<MeetingAgent />} />
+          <Route path="/meetings/:sessionId" element={<MeetingDetail />} />
+          <Route path="/devtools/meeting-agent" element={<MeetingAgentDashboard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

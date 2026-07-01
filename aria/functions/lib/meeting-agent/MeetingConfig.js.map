@@ -1,0 +1,1 @@
+{"version":3,"file":"MeetingConfig.js","sourceRoot":"","sources":["../../src/meeting-agent/MeetingConfig.ts"],"names":[],"mappings":";AAAA;;GAEG;;;AAmBU,QAAA,sBAAsB,GAAkB;IACnD,6BAA6B,EAAE,KAAK;IACpC,yBAAyB,EAAE,GAAG;IAC9B,yBAAyB,EAAE,IAAI;IAC/B,yBAAyB,EAAE,KAAK,EAAI,+CAA+C;IACnF,YAAY,EAAE,EAAE,GAAG,EAAE,GAAG,IAAI;IAC5B,yBAAyB,EAAE,IAAI;IAC/B,iCAAiC,EAAE,IAAI;CACxC,CAAA"}

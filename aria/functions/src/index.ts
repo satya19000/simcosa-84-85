@@ -309,3 +309,19 @@ export {
   getComputerAuditFeed,
   downloadGeneratedFileWithApproval,
 } from './computerControlApi'
+
+// Phase 5.7 — Meeting Agent
+export {
+  createMeetingSession,
+  startMeetingSession,
+  pauseMeetingSession,
+  endMeetingSession,
+  deleteMeetingSession,
+  addTranscriptChunk,
+  generateMeetingSummary,
+  extractMeetingActionItems,
+  approveMeetingFollowUp,
+  exportMeetingNotes,
+  listMeetingSessions,
+  getMeetingSummary,
+} from './meetingAgentApi'

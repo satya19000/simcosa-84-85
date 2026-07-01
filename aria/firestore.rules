@@ -295,6 +295,44 @@ service cloud.firestore {
       }
     }
 
+    // ── Phase 5.7: Meeting Agent — deny-by-default, CF/Admin SDK only ────────
+    // All meeting data is sensitive (transcripts, summaries, action items).
+    // Client SDKs cannot read or write any meeting collections directly.
+    // All access goes through meetingAgentApi.ts Cloud Functions which verify
+    // request.auth and TenantEngine.requireIdentity before any read/write.
+    //
+    // Collections:
+    //   tenants/{tenantId}/meetingSessions/{sessionId}
+    //   tenants/{tenantId}/meetingTranscripts/{transcriptId}
+    //   tenants/{tenantId}/meetingSummaries/{summaryId}
+    //   tenants/{tenantId}/meetingActionItems/{actionItemId}
+    //   tenants/{tenantId}/meetingParticipants/{participantId}
+    //   tenants/{tenantId}/meetingAudit/{auditId}
+    //   tenants/{tenantId}/meetingFollowUps/{followUpId}
+    match /tenants/{tenantId}/meetingSessions/{sessionId} {
+      allow read, write: if false; // Cloud Functions / Admin SDK only
+    }
+    match /tenants/{tenantId}/meetingTranscripts/{transcriptId} {
+      // Transcripts are especially sensitive — no client read/write ever.
+      allow read, write: if false; // Cloud Functions / Admin SDK only
+    }
+    match /tenants/{tenantId}/meetingSummaries/{summaryId} {
+      allow read, write: if false; // Cloud Functions / Admin SDK only
+    }
+    match /tenants/{tenantId}/meetingActionItems/{actionItemId} {
+      allow read, write: if false; // Cloud Functions / Admin SDK only
+    }
+    match /tenants/{tenantId}/meetingParticipants/{participantId} {
+      allow read, write: if false; // Cloud Functions / Admin SDK only
+    }
+    match /tenants/{tenantId}/meetingAudit/{auditId} {
+      // Audit trail is immutable from client perspective.
+      allow read, write: if false; // Cloud Functions / Admin SDK only
+    }
+    match /tenants/{tenantId}/meetingFollowUps/{followUpId} {
+      allow read, write: if false; // Cloud Functions / Admin SDK only
+    }
+
     // ── Deny everything else ─────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
