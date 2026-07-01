@@ -1,12 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import {
   ArrowLeft, BookOpen, Camera, Film, FileText, Heart, MapPin, Users,
-  Smile, Star, Plus, Pencil, Trash2, X, Check, Loader2, Eye, EyeOff,
-  Briefcase, Mail, Phone, MessageCircle,
+  Smile, Star, Plus, Pencil, Trash2, Check, Loader2, Eye, EyeOff,
+  Briefcase, Mail, Phone, MessageCircle, HardDrive, AlertTriangle,
 } from "lucide-react";
-import { getMemberBySlug, listMemberBlogItems, addMemberBlogItem, editMemberBlogItem, deleteMemberBlogItem, type AddMemberBlogItemInput, type EditMemberBlogItemInput } from "@/api/memberBlogs";
+import {
+  getMemberBySlug, listMemberBlogItems, addMemberBlogItem, editMemberBlogItem,
+  deleteMemberBlogItem, getMemberStorageUsage,
+  type AddMemberBlogItemInput, type EditMemberBlogItemInput, type MemberBlogItem, type MemberStorageUsage,
+} from "@/api/memberBlogs";
 import { useAuth } from "@/lib/auth";
 import { ImageLightbox, type LightboxImage } from "@/components/ImageLightbox";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
@@ -14,13 +18,23 @@ import { useUploadQueue } from "@/hooks/useUploadQueue";
 import { uploadToFirebaseStorageResumable, deleteFromFirebaseStorage } from "@/lib/storage";
 import { compressImage } from "@/lib/image-compress";
 import { toast } from "sonner";
-import type { MemberBlogItem } from "@/api/memberBlogs";
 
 export const Route = createFileRoute("/_authenticated/members/$slug")({
   head: () => ({ meta: [{ title: "Member Blog — SIMCOSA 84–85" }] }),
   component: MemberBlogPage,
 });
 
+// ---------- Storage limits (constants — easy to update) ----------
+/** Max raw image size before compression check. */
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024;   // 10 MB
+/** Max video size. Owner/admin can raise this in a future config column. */
+export const VIDEO_MAX_BYTES = 25 * 1024 * 1024;  // 25 MB
+/** Max size for PDF / Office docs / archives. */
+const DOC_MAX_BYTES = 10 * 1024 * 1024;     // 10 MB
+/** Per-member blog storage quota. */
+export const MEMBER_QUOTA_BYTES = 200 * 1024 * 1024; // 200 MB
+
+// ---------- Tabs ----------
 const TABS = [
   { key: "about", label: "About", icon: Star },
   { key: "memories", label: "Memories", icon: Heart },
@@ -38,7 +52,7 @@ type TabKey = typeof TABS[number]["key"];
 
 const PHOTO_ACCEPT = "image/*";
 const VIDEO_ACCEPT = "video/*";
-const FILE_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip";
+const FILE_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.csv";
 
 function tabAccept(tab: TabKey): string {
   if (tab === "photos") return PHOTO_ACCEPT;
@@ -62,16 +76,78 @@ function attachmentType(tab: TabKey): string {
   return "photo";
 }
 
-// ---- Item form ----
+/** Validate file size against per-type limits; returns error string or null. */
+function validateFileSize(file: File, tab: TabKey): string | null {
+  const isImage = file.type.startsWith("image/");
+  const isVideo = file.type.startsWith("video/");
+  if (isImage && file.size > IMAGE_MAX_BYTES) {
+    return `Image too large (${fmtMB(file.size)}). Maximum is 10 MB.`;
+  }
+  if (isVideo && file.size > VIDEO_MAX_BYTES) {
+    return `Video too large (${fmtMB(file.size)}). Maximum is 25 MB. Please upload a shorter, compressed video.`;
+  }
+  if (!isImage && !isVideo && file.size > DOC_MAX_BYTES) {
+    return `File too large (${fmtMB(file.size)}). Maximum is 10 MB.`;
+  }
+  return null;
+}
+
+function fmtMB(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
+// ---------- Storage bar ----------
+
+function StorageBar({ usage }: { usage: MemberStorageUsage }) {
+  const pct = Math.min(100, (usage.total_bytes / MEMBER_QUOTA_BYTES) * 100);
+  const nearLimit = pct >= 80;
+  const atLimit = pct >= 100;
+  return (
+    <div className="bg-white rounded-2xl border border-amber-100 shadow-sm p-4 flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <HardDrive className="h-4 w-4 text-amber-400 shrink-0" />
+        <span className="text-xs font-semibold text-gray-600">
+          Storage used: {fmtBytes(usage.total_bytes)} / {fmtBytes(MEMBER_QUOTA_BYTES)}
+        </span>
+        {atLimit && <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 ml-auto" />}
+      </div>
+      <div className="w-full h-2 rounded-full bg-amber-50 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${atLimit ? "bg-red-500" : nearLimit ? "bg-amber-500" : "bg-emerald-500"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="flex flex-wrap gap-3 text-xs text-gray-400">
+        <span>{usage.photo_count} photo{usage.photo_count !== 1 ? "s" : ""}</span>
+        <span>·</span>
+        <span>{usage.video_count} video{usage.video_count !== 1 ? "s" : ""}</span>
+        <span>·</span>
+        <span>{usage.doc_count} file{usage.doc_count !== 1 ? "s" : ""}</span>
+        <span>·</span>
+        <span>{usage.file_count} with attachment{usage.file_count !== 1 ? "s" : ""} total</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Item form ----------
 
 interface ItemFormProps {
   memberId: string;
   tab: TabKey;
   existing?: MemberBlogItem;
+  /** Current bytes already used (for quota pre-check). */
+  usedBytes: number;
   onDone: () => void;
 }
 
-function ItemForm({ memberId, tab, existing, onDone }: ItemFormProps) {
+function ItemForm({ memberId, tab, existing, usedBytes, onDone }: ItemFormProps) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [title, setTitle] = useState(existing?.title ?? "");
@@ -83,6 +159,14 @@ function ItemForm({ memberId, tab, existing, onDone }: ItemFormProps) {
 
   const addMutation = useMutation({ mutationFn: (d: AddMemberBlogItemInput) => addMemberBlogItem({ data: d }) });
   const editMutation = useMutation({ mutationFn: (d: EditMemberBlogItemInput) => editMemberBlogItem({ data: d }) });
+
+  const handleFilesChange = (incoming: File[]) => {
+    const f = incoming.slice(0, 1);
+    if (f.length === 0) { setFiles([]); return; }
+    const err = validateFileSize(f[0], tab);
+    if (err) { toast.error(err); return; }
+    setFiles(f);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +180,14 @@ function ItemForm({ memberId, tab, existing, onDone }: ItemFormProps) {
       let filePayload: Partial<AddMemberBlogItemInput> = {};
       if (files.length > 0) {
         const file = files[0];
+
+        // Quota pre-check (client-side guard before upload).
+        if (usedBytes + file.size > MEMBER_QUOTA_BYTES) {
+          toast.error("Storage limit reached for this member blog. Please delete old files or contact admin.");
+          setSaving(false);
+          return;
+        }
+
         const compressed = file.type.startsWith("image/") ? await compressImage(file) : file;
         uploadQueue.init([file]);
         uploadQueue.setStatus(file, "uploading");
@@ -137,9 +229,11 @@ function ItemForm({ memberId, tab, existing, onDone }: ItemFormProps) {
         toast.success("Added!");
       }
       qc.invalidateQueries({ queryKey: ["member-blog", memberId] });
+      qc.invalidateQueries({ queryKey: ["member-blog-usage", memberId] });
       onDone();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed";
+      // Surface the server-side duplicate error clearly.
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -166,22 +260,36 @@ function ItemForm({ memberId, tab, existing, onDone }: ItemFormProps) {
           />
         </>
       )}
+
       {tabAllowsFile(tab) && !existing?.file_url && (
-        <DropzoneUpload
-          files={files}
-          onFilesChange={(f) => setFiles(f.slice(0, 1))}
-          accept={tabAccept(tab)}
-          multiple={false}
-          disabled={saving}
-          progress={uploadQueue.progress}
-          label={
-            tab === "photos" ? "Upload a photo" :
-            tab === "videos" ? "Upload a video" :
-            tab === "files" ? "Upload a file (PDF, Word, etc.)" :
-            "Attach a photo (optional)"
-          }
-        />
+        <div className="space-y-2">
+          <DropzoneUpload
+            files={files}
+            onFilesChange={handleFilesChange}
+            accept={tabAccept(tab)}
+            multiple={false}
+            disabled={saving}
+            progress={uploadQueue.progress}
+            label={
+              tab === "photos" ? "Upload a photo (max 10 MB — converted to WebP)" :
+              tab === "videos" ? "Upload a video (max 25 MB)" :
+              tab === "files" ? "Upload a file — PDF, Word, etc. (max 10 MB)" :
+              "Attach a photo (optional, max 10 MB)"
+            }
+          />
+          {tab === "videos" && (
+            <p className="text-xs text-amber-600 flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              Videos use more storage. Short compressed videos are recommended to save storage.
+            </p>
+          )}
+          <p className="text-[11px] text-gray-400">
+            {tab === "photos" || (tabAllowsText(tab) && tab !== "videos") ? "Images are automatically compressed to WebP." : ""}
+            {tab === "files" ? "Accepted: PDF, Word, Excel, PowerPoint, TXT, ZIP, CSV." : ""}
+          </p>
+        </div>
       )}
+
       {tab === "photos" && !tabAllowsText(tab) && (
         <input
           value={title}
@@ -190,6 +298,7 @@ function ItemForm({ memberId, tab, existing, onDone }: ItemFormProps) {
           className="w-full rounded-xl border border-amber-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
         />
       )}
+
       <div className="flex items-center gap-3 pt-1">
         <button
           type="button"
@@ -221,7 +330,7 @@ function ItemForm({ memberId, tab, existing, onDone }: ItemFormProps) {
   );
 }
 
-// ---- Item card ----
+// ---------- Item card ----------
 
 interface ItemCardProps {
   item: MemberBlogItem;
@@ -259,6 +368,9 @@ function ItemCard({ item, canEdit, onEdit, onDelete, onImageClick }: ItemCardPro
         >
           <FileText className="h-5 w-5 text-amber-500 shrink-0" />
           <span className="text-sm font-semibold text-gray-700 truncate">{item.file_name ?? "Download file"}</span>
+          {item.file_size && (
+            <span className="ml-auto text-xs text-gray-400 shrink-0">{fmtMB(item.file_size)}</span>
+          )}
         </a>
       )}
       <div className="p-4">
@@ -267,6 +379,9 @@ function ItemCard({ item, canEdit, onEdit, onDelete, onImageClick }: ItemCardPro
         <div className="flex items-center gap-2 mt-3">
           {!item.is_published && (
             <span className="text-xs rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 font-semibold">Draft</span>
+          )}
+          {item.file_size && isImage && (
+            <span className="text-xs text-gray-300">{fmtMB(item.file_size)}</span>
           )}
           <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>
           {canEdit && (
@@ -295,7 +410,7 @@ function ItemCard({ item, canEdit, onEdit, onDelete, onImageClick }: ItemCardPro
   );
 }
 
-// ---- Photo grid tab ----
+// ---------- Photo grid tab ----------
 
 function PhotoGrid({ items, canEdit, onEdit, onDelete }: {
   items: MemberBlogItem[];
@@ -349,15 +464,16 @@ function PhotoGrid({ items, canEdit, onEdit, onDelete }: {
   );
 }
 
-// ---- Tab content ----
+// ---------- Tab content ----------
 
 interface TabContentProps {
   memberId: string;
   tab: TabKey;
   canEdit: boolean;
+  storageUsage: MemberStorageUsage | undefined;
 }
 
-function TabContent({ memberId, tab, canEdit }: TabContentProps) {
+function TabContent({ memberId, tab, canEdit, storageUsage }: TabContentProps) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<MemberBlogItem | null>(null);
@@ -372,6 +488,7 @@ function TabContent({ memberId, tab, canEdit }: TabContentProps) {
     mutationFn: (id: string) => deleteMemberBlogItem({ data: { id } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["member-blog", memberId] });
+      qc.invalidateQueries({ queryKey: ["member-blog-usage", memberId] });
       toast.success("Deleted");
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Delete failed"),
@@ -380,10 +497,13 @@ function TabContent({ memberId, tab, canEdit }: TabContentProps) {
   const handleDelete = async (item: MemberBlogItem) => {
     if (!confirm("Delete this item?")) return;
     if (item.fb_storage_path) {
-      try { await deleteFromFirebaseStorage(item.fb_storage_path); } catch { /* ignore */ }
+      try { await deleteFromFirebaseStorage(item.fb_storage_path); } catch { /* best-effort */ }
     }
     deleteMutation.mutate(item.id);
   };
+
+  const atQuota = storageUsage ? storageUsage.total_bytes >= MEMBER_QUOTA_BYTES : false;
+  const usedBytes = storageUsage?.total_bytes ?? 0;
 
   const imageItems = items.filter((i) => i.file_url && (i.mime_type?.startsWith("image/") || i.attachment_type === "photo"));
   const lbImages: LightboxImage[] = imageItems.map((i) => ({ src: i.file_url!, alt: i.title ?? "Photo", caption: i.title ?? undefined }));
@@ -398,13 +518,26 @@ function TabContent({ memberId, tab, canEdit }: TabContentProps) {
 
   return (
     <div className="space-y-4">
+      {canEdit && atQuota && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          Storage limit reached. Delete old files to free space before uploading more.
+        </div>
+      )}
+
       {canEdit && (
         <div className="flex justify-end">
           {!showForm && !editItem && (
             <button
               type="button"
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-sm font-semibold transition-colors"
+              onClick={() => {
+                if (atQuota) {
+                  toast.error("Storage limit reached for this member blog. Please delete old files or contact admin.");
+                  return;
+                }
+                setShowForm(true);
+              }}
+              className="flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60"
             >
               <Plus className="h-4 w-4" />
               {tab === "photos" ? "Add Photo" : tab === "videos" ? "Add Video" : tab === "files" ? "Upload File" : "Add Post"}
@@ -414,11 +547,11 @@ function TabContent({ memberId, tab, canEdit }: TabContentProps) {
       )}
 
       {showForm && (
-        <ItemForm memberId={memberId} tab={tab} onDone={() => setShowForm(false)} />
+        <ItemForm memberId={memberId} tab={tab} usedBytes={usedBytes} onDone={() => setShowForm(false)} />
       )}
 
       {editItem && (
-        <ItemForm memberId={memberId} tab={tab} existing={editItem} onDone={() => setEditItem(null)} />
+        <ItemForm memberId={memberId} tab={tab} existing={editItem} usedBytes={usedBytes} onDone={() => setEditItem(null)} />
       )}
 
       {tab === "photos" ? (
@@ -486,16 +619,26 @@ function EmptyState({ tab, canEdit, onAdd }: { tab: TabKey; canEdit: boolean; on
   );
 }
 
-// ---- Main page ----
+// ---------- Main page ----------
 
 function MemberBlogPage() {
   const { slug } = Route.useParams();
   const { user, isAdmin, isOwner } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>("about");
 
-  const { data: member, isLoading, error } = useQuery({
+  const { data: member, isLoading } = useQuery({
     queryKey: ["member-by-slug", slug],
     queryFn: () => getMemberBySlug({ data: { slug } }),
+  });
+
+  const canEdit = !!(user && member && (user.id === member.id || isAdmin || isOwner));
+
+  // Load storage usage only for the page owner / admin / owner — the server
+  // enforces the same check so this is purely a UX optimisation.
+  const { data: storageUsage } = useQuery({
+    queryKey: ["member-blog-usage", member?.id],
+    queryFn: () => getMemberStorageUsage({ data: { member_id: member!.id } }),
+    enabled: canEdit && !!member,
   });
 
   if (isLoading) {
@@ -514,8 +657,6 @@ function MemberBlogPage() {
       </div>
     );
   }
-
-  const canEdit = !!(user && (user.id === member.id || isAdmin || isOwner));
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50/60 to-white">
@@ -601,11 +742,16 @@ function MemberBlogPage() {
       </div>
 
       {/* Tab content */}
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8 space-y-6">
+        {/* Storage bar — visible to page owner / admin / owner only */}
+        {canEdit && storageUsage && (
+          <StorageBar usage={storageUsage} />
+        )}
+
         {activeTab === "about" ? (
           <AboutTab member={member} canEdit={canEdit} />
         ) : (
-          <TabContent memberId={member.id} tab={activeTab} canEdit={canEdit} />
+          <TabContent memberId={member.id} tab={activeTab} canEdit={canEdit} storageUsage={storageUsage} />
         )}
       </div>
     </div>

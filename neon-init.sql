@@ -388,6 +388,9 @@ CREATE TABLE IF NOT EXISTS member_blog_items (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_member_blog_items_member_cat ON member_blog_items(member_id, category, sort_order, created_at DESC);
+-- Duplicate-file detection and storage-quota queries.
+CREATE INDEX IF NOT EXISTS idx_member_blog_items_member_file
+  ON member_blog_items(member_id, file_name, file_size, mime_type);
 
 -- =========================
 -- MAKE FIRST ADMIN
