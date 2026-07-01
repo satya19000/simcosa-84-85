@@ -1,4 +1,4 @@
-# Computer Control Foundation (Phase 5.5)
+# Computer Control Foundation (Phase 5.5 + 5.6)
 
 **Status: Foundation/Architecture Phase**
 
@@ -214,3 +214,48 @@ Phase 5.7+:
 Events logged to `computerAudit`: `action.planned`, `action.approved`, `action.blocked`, `action.executed`, `capability.denied`, `safety_guard.triggered`, `agent.registered`, `agent.revoked`, `extension.registered`, `extension.revoked`, `session.created`, `session.revoked`, `approval.requested`.
 
 **Sensitive content is NEVER logged** — only metadata (capability IDs, risk levels, user IDs, tenant IDs, plan IDs).
+
+---
+
+## Phase 5.6 Additions
+
+### Execution Pipeline (`ComputerExecutionPipeline`)
+Orchestrates the full flow: intent → planner → safety guard → approval bridge (if required) → provider execution → document bridge (if file involved) → AI Gateway (if summary/analysis needed) → audit → result. No stage may be skipped.
+
+### Document Bridge (`ComputerDocumentBridge`)
+Bridges file selection (user-initiated browser picker only) to Document Intelligence and AI Gateway:
+- `fileSelectedByUser` — accepts user-provided file content, never silently reads files
+- `requestDocumentSummary` — routes through AI Gateway (`chatWithAriaGateway` or `analyzeSelectedDocument`)
+- `extractActionItems` — structured extraction of action items from documents
+- `suggestDocumentToTask` / `suggestDocumentToReminder` — returns suggestions ONLY; auto-creation is never performed
+
+### Download Manager (`ComputerDownloadManager`)
+`downloadFileWithUserApproval`: shows file name/type/source before any download, requires an approved `ComputerApprovalBridge` record, audits the event to `computerGeneratedFiles`.
+
+### File Picker Plan (`ComputerFilePickerPlan`)
+Generates a safe step-by-step plan: choose file (browser `<input type="file">`) → analyze with ARIA → summarize → extract action items → suggest task (approval required). Never silently accesses local files.
+
+### Audit Stream (`ComputerAuditStream`)
+Real-time paginated read of `tenants/{tenantId}/computerAudit` ordered by timestamp desc. Frontend `LiveComputerAuditFeed` component polls this and color-codes events by type (blocked/safety_guard = red; approval_requested = yellow; executed = green; planned = blue).
+
+### Execution Validator (`ComputerExecutionValidator`)
+Additional pre-execution gate: validates plan exists, approval record is `approved` and matches the action, and capability has not been revoked since approval was granted.
+
+### ElectronDesktopProvider (Placeholder)
+All methods return `{ success: false, notImplemented: true }`. No real OS-level control is implemented. See future implementation plan above.
+
+### Web PWA Provider Enhancements
+Functional: `openUrl`, `copyToClipboard` (user-visible confirmation), `uploadFileWithUserPicker`, `downloadFileWithUserApproval` (via DownloadManager).
+Structured placeholder (not functional): `summarizeVisiblePage`, `screenshotWithApproval`.
+All Phase 5.5 hard-blocks remain unchanged.
+
+### New Cloud Functions
+`executeApprovedComputerAction`, `analyzeSelectedDocument`, `generateComputerActionSummary`, `getComputerAuditFeed`, `downloadGeneratedFileWithApproval` — all require auth and tenant identity check.
+
+### New Firestore Collections
+`tenants/{tenantId}/computerDocuments/{documentId}`, `tenants/{tenantId}/computerGeneratedFiles/{fileId}` — both deny-by-default client access (CF/Admin SDK only).
+
+### Safety Invariants (unchanged from Phase 5.5)
+- `credentialAccess`: unconditionally blocked in `ComputerSafetyGuard` at line 32 — no code path bypasses this
+- No silent screenshot, clipboard read, file access, background monitoring, auto-submit, or payment automation
+- `ComputerApprovalBridge` remains the ONLY path to `ApprovalEngine.createApprovalRequest`

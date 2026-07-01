@@ -3,6 +3,7 @@ import type { ComputerActionPlan, ComputerActionStep, ComputerCapabilityId, Comp
 import type { ComputerCapabilityRegistry } from './ComputerCapabilityRegistry'
 import type { ComputerSafetyGuard } from './ComputerSafetyGuard'
 import type { ComputerControlConfig } from './ComputerConfig'
+import type { FilePickerPlanOptions } from './ComputerExecutionTypes'
 
 /**
  * ComputerActionPlanner — converts user intent into a PROPOSED action plan.
@@ -137,6 +138,46 @@ export class ComputerActionPlanner {
       parameters,
       status: 'pending',
     }
+  }
+
+  /**
+   * Delegate file picker plan generation to ComputerFilePickerPlan steps.
+   * This method is called by ComputerFilePickerPlan to avoid circular imports.
+   *
+   * Generates a safe file-picker + analysis plan using manual steps so that
+   * every step goes through the same safety guard checks as any other plan.
+   */
+  async planFilePicker(options: FilePickerPlanOptions): Promise<ComputerActionPlan> {
+    return this.planFromIntent(
+      options.userId,
+      options.tenantId,
+      options.intent || 'Open and analyze a file with ARIA',
+      [
+        {
+          capabilityId: 'uploadFileWithUserPicker',
+          description: 'User selects a file via the browser file picker (user gesture required — no silent access).',
+          parameters: {
+            acceptedFileTypes: options.acceptedFileTypes ?? '*/*',
+            note: 'Browser <input type="file"> — user controls file selection entirely.',
+          },
+        },
+        {
+          capabilityId: 'readVisiblePage',
+          description: 'File content is read from the user-selected file and forwarded to the ARIA Document Intelligence pipeline.',
+          parameters: { source: 'browser-file-picker' },
+        },
+        {
+          capabilityId: 'summarizeVisiblePage',
+          description: 'AI Gateway generates a summary of the document content.',
+          parameters: { via: 'ai-gateway' },
+        },
+        {
+          capabilityId: 'copyToClipboard',
+          description: 'Optionally copy the summary to clipboard for user review (requires approval).',
+          parameters: { text: '[summary output — provided at execution time]' },
+        },
+      ]
+    )
   }
 
   private computeOverallRisk(steps: ComputerActionStep[]): ComputerRiskLevel {

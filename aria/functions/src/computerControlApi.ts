@@ -2,6 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import * as admin from 'firebase-admin'
 import { getComputerControlEngine } from './computer-control'
 import type { ComputerCapabilityId, ComputerApprovalInput } from './computer-control/ComputerTypes'
+import type { DownloadApprovalInput } from './computer-control/ComputerExecutionTypes'
 
 const SHARED_OPTS = {
   secrets: ['ANTHROPIC_API_KEY'],
@@ -128,6 +129,155 @@ export const listBrowserExtensions = onCall(SHARED_OPTS, async (request) => {
   if (!tenantId) throw new HttpsError('invalid-argument', 'tenantId required')
   const engine = getComputerControlEngine(uid, db(), apiKey())
   return wrapError(() => engine.listBrowserExtensions(tenantId, uid))
+})
+
+// ── Audit / logging ────────────────────────────────────────────────────────
+
+// ── Phase 5.6: Execute Approved Action ────────────────────────────────────────
+
+/**
+ * executeApprovedComputerAction — execute a pre-approved single action step.
+ * Validates the approval record via ComputerExecutionValidator before calling
+ * the provider through the full pipeline (safety → approval → provider).
+ * Requires auth + tenant membership.
+ */
+export const executeApprovedComputerAction = onCall(SHARED_OPTS, async (request) => {
+  const uid = requireAuth(request)
+  const { tenantId, plan, step, approvalRequestId, documentContext } = request.data as {
+    tenantId: string
+    plan: Parameters<ReturnType<typeof getComputerControlEngine>['executePipelineStep']>[2]['plan']
+    step: Parameters<ReturnType<typeof getComputerControlEngine>['executePipelineStep']>[2]['step']
+    approvalRequestId?: string
+    documentContext?: unknown
+  }
+  if (!tenantId?.trim()) throw new HttpsError('invalid-argument', 'tenantId required')
+  if (!plan?.planId) throw new HttpsError('invalid-argument', 'plan with planId required')
+  if (!step?.capabilityId) throw new HttpsError('invalid-argument', 'step with capabilityId required')
+  const engine = getComputerControlEngine(uid, db(), apiKey())
+  return wrapError(() =>
+    engine.executePipelineStep(tenantId, uid, {
+      tenantId,
+      userId: uid,
+      plan,
+      step,
+      approvalRequestId,
+      documentContext: documentContext as undefined,
+    })
+  )
+})
+
+// ── Phase 5.6: Analyze Selected Document ──────────────────────────────────────
+
+/**
+ * analyzeSelectedDocument — user sends file content (already picked via browser
+ * file picker); routes through ComputerDocumentBridge → AI Gateway for summary
+ * and action items. Requires auth + tenant membership.
+ *
+ * SAFETY: File content is base64-encoded by the front-end from a user-selected
+ * file via <input type="file">. No server-side file system access occurs.
+ * File content is NOT persisted — only metadata and analysis results are stored.
+ */
+export const analyzeSelectedDocument = onCall({ ...SHARED_OPTS, timeoutSeconds: 60 }, async (request) => {
+  const uid = requireAuth(request)
+  const { tenantId, fileName, fileType, fileContentBase64, fileSizeBytes } = request.data as {
+    tenantId: string
+    fileName: string
+    fileType: string
+    fileContentBase64: string
+    fileSizeBytes: number
+  }
+  if (!tenantId?.trim()) throw new HttpsError('invalid-argument', 'tenantId required')
+  if (!fileName?.trim()) throw new HttpsError('invalid-argument', 'fileName required')
+  if (!fileType?.trim()) throw new HttpsError('invalid-argument', 'fileType required')
+  if (!fileContentBase64?.trim()) throw new HttpsError('invalid-argument', 'fileContentBase64 required')
+  if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0) {
+    throw new HttpsError('invalid-argument', 'fileSizeBytes must be a positive number')
+  }
+  const engine = getComputerControlEngine(uid, db(), apiKey())
+  return wrapError(() =>
+    engine.analyzeDocument(tenantId, uid, {
+      fileName,
+      fileType,
+      fileContentBase64,
+      fileSizeBytes,
+      // AI summary: Phase 5.7 will integrate the full AI Gateway pipeline here.
+      // For now, structural analysis only.
+      aiSummary: undefined,
+      aiActionItems: undefined,
+    })
+  )
+})
+
+// ── Phase 5.6: Generate Computer Action Summary ────────────────────────────────
+
+/**
+ * generateComputerActionSummary — returns a human-readable summary of a
+ * proposed action plan. Requires auth.
+ * Phase 5.7 will route this through AI Gateway for a natural-language summary.
+ */
+export const generateComputerActionSummary = onCall(SHARED_OPTS, async (request) => {
+  requireAuth(request)
+  const { plan } = request.data as {
+    plan: { planId: string; intent: string; steps: Array<{ capabilityId: string; riskLevel: string; description: string }> }
+  }
+  if (!plan?.planId) throw new HttpsError('invalid-argument', 'plan with planId required')
+
+  // Structural summary without AI Gateway (Phase 5.7 will add LLM-based summary)
+  const stepSummaries = (plan.steps ?? []).map(
+    (s, i) => `Step ${i + 1}: ${s.description} [${s.capabilityId}, risk: ${s.riskLevel}]`
+  )
+  return {
+    planId: plan.planId,
+    intent: plan.intent,
+    summary: `Plan "${plan.intent}" has ${plan.steps?.length ?? 0} step(s): ${stepSummaries.join(' → ')}`,
+    stepCount: plan.steps?.length ?? 0,
+    aiGatewayUsed: false,  // Phase 5.7 will set this to true
+    _note: 'Full AI Gateway summarization is deferred to Phase 5.7.',
+  }
+})
+
+// ── Phase 5.6: Get Computer Audit Feed ────────────────────────────────────────
+
+/**
+ * getComputerAuditFeed — returns paginated audit events from
+ * tenants/{tenantId}/computerAudit ordered by timestamp desc.
+ * Requires auth + tenant membership.
+ */
+export const getComputerAuditFeed = onCall(SHARED_OPTS, async (request) => {
+  const uid = requireAuth(request)
+  const { tenantId, limit, beforeTimestamp } = request.data as {
+    tenantId: string
+    limit?: number
+    beforeTimestamp?: string
+  }
+  if (!tenantId?.trim()) throw new HttpsError('invalid-argument', 'tenantId required')
+  const engine = getComputerControlEngine(uid, db(), apiKey())
+  return wrapError(() =>
+    engine.getAuditFeed(tenantId, uid, limit ?? 25, beforeTimestamp)
+  )
+})
+
+// ── Phase 5.6: Download Generated File with Approval ─────────────────────────
+
+/**
+ * downloadGeneratedFileWithApproval — triggers ComputerDownloadManager with
+ * an existing approval record. Requires auth + tenant membership.
+ *
+ * The approval record must already exist and be in 'approved' status.
+ * The actual file transfer happens browser-side; this function verifies
+ * approval and records the audit event.
+ */
+export const downloadGeneratedFileWithApproval = onCall(SHARED_OPTS, async (request) => {
+  const uid = requireAuth(request)
+  const input = request.data as DownloadApprovalInput
+  if (!input.tenantId?.trim()) throw new HttpsError('invalid-argument', 'tenantId required')
+  if (!input.approvalRequestId?.trim()) throw new HttpsError('invalid-argument', 'approvalRequestId required')
+  if (!input.fileName?.trim()) throw new HttpsError('invalid-argument', 'fileName required')
+  if (!input.fileType?.trim()) throw new HttpsError('invalid-argument', 'fileType required')
+  const engine = getComputerControlEngine(uid, db(), apiKey())
+  return wrapError(() =>
+    engine.downloadWithApproval(input.tenantId, uid, { ...input, userId: uid })
+  )
 })
 
 // ── Audit / logging ────────────────────────────────────────────────────────

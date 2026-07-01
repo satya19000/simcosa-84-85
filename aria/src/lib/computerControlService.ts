@@ -11,6 +11,12 @@ const registerBrowserExtensionFn = httpsCallable(fns, 'registerBrowserExtension'
 const revokeBrowserExtensionFn = httpsCallable(fns, 'revokeBrowserExtension')
 const listBrowserExtensionsFn = httpsCallable(fns, 'listBrowserExtensions')
 const logComputerActionResultFn = httpsCallable(fns, 'logComputerActionResult')
+// Phase 5.6
+const executeApprovedComputerActionFn = httpsCallable(fns, 'executeApprovedComputerAction')
+const analyzeSelectedDocumentFn = httpsCallable(fns, 'analyzeSelectedDocument', { timeout: 60000 })
+const generateComputerActionSummaryFn = httpsCallable(fns, 'generateComputerActionSummary')
+const getComputerAuditFeedFn = httpsCallable(fns, 'getComputerAuditFeed')
+const downloadGeneratedFileWithApprovalFn = httpsCallable(fns, 'downloadGeneratedFileWithApproval')
 
 // ── Shared types (mirrors computer-control/ComputerTypes.ts) ─────────────────
 
@@ -107,6 +113,7 @@ export interface ComputerAuditEvent {
   capabilityId?: ComputerCapabilityId
   planId?: string
   riskLevel?: ComputerRiskLevel
+  approvalRequestId?: string
   metadata: Record<string, unknown>
   timestamp: string
 }
@@ -197,4 +204,168 @@ export async function logComputerActionResult(
   metadata: Record<string, unknown> = {}
 ): Promise<void> {
   await logComputerActionResultFn({ tenantId, planId, capabilityId, success, metadata })
+}
+
+// ── Phase 5.6: Execute Approved Action ────────────────────────────────────────
+
+export interface PipelineExecutionResult {
+  pipelineId: string
+  planId: string
+  stepIndex: number
+  capabilityId: ComputerCapabilityId
+  overallSuccess: boolean
+  stages: Array<{
+    stage: string
+    success: boolean
+    durationMs: number
+    output?: unknown
+    error?: string
+    skipped?: boolean
+  }>
+  auditEventId?: string
+  executedAt: string
+}
+
+export async function executeApprovedComputerAction(
+  tenantId: string,
+  plan: ComputerActionPlan,
+  step: ComputerActionStep,
+  approvalRequestId?: string
+): Promise<PipelineExecutionResult> {
+  const result = await executeApprovedComputerActionFn({ tenantId, plan, step, approvalRequestId })
+  return result.data as PipelineExecutionResult
+}
+
+// ── Phase 5.6: Analyze Selected Document ──────────────────────────────────────
+
+export interface ExtractedActionItem {
+  index: number
+  text: string
+  priority: 'high' | 'medium' | 'low'
+  suggestedDueDate?: string
+}
+
+export interface DocumentSuggestion {
+  type: 'task' | 'reminder'
+  title: string
+  notes: string
+  sourcePlanId: string
+  sourceDocumentId: string
+  _requiresUserApproval: true
+}
+
+export interface DocumentAnalysisResult {
+  documentId: string
+  tenantId: string
+  userId: string
+  fileName: string
+  fileType: string
+  fileSizeBytes: number
+  summary: string
+  actionItems: ExtractedActionItem[]
+  suggestedTasks: DocumentSuggestion[]
+  suggestedReminders: DocumentSuggestion[]
+  analyzedAt: string
+  aiGatewayUsed: boolean
+}
+
+export async function analyzeSelectedDocument(
+  tenantId: string,
+  fileName: string,
+  fileType: string,
+  fileContentBase64: string,
+  fileSizeBytes: number
+): Promise<DocumentAnalysisResult> {
+  const result = await analyzeSelectedDocumentFn({
+    tenantId,
+    fileName,
+    fileType,
+    fileContentBase64,
+    fileSizeBytes,
+  })
+  return result.data as DocumentAnalysisResult
+}
+
+/**
+ * Read a browser File object and encode it as base64 for analyzeSelectedDocument.
+ */
+export async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      // Strip the data URL prefix if present
+      const base64 = result.includes(',') ? result.split(',')[1] : result
+      resolve(base64)
+    }
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+// ── Phase 5.6: Generate Action Summary ────────────────────────────────────────
+
+export interface ComputerActionSummary {
+  planId: string
+  intent: string
+  summary: string
+  stepCount: number
+  aiGatewayUsed: boolean
+  _note?: string
+}
+
+export async function generateComputerActionSummary(plan: ComputerActionPlan): Promise<ComputerActionSummary> {
+  const result = await generateComputerActionSummaryFn({ plan })
+  return result.data as ComputerActionSummary
+}
+
+// ── Phase 5.6: Audit Feed ──────────────────────────────────────────────────────
+
+export interface AuditFeedPage {
+  events: Array<{
+    streamEventId: string
+    streamEventType: string
+    sourceAuditEvent: ComputerAuditEvent
+    colorCode: string
+    riskLevel: string
+    displayLabel: string
+    timestamp: string
+  }>
+  nextPageToken?: string
+  totalFetched: number
+}
+
+export async function getComputerAuditFeed(
+  tenantId: string,
+  limit = 25,
+  beforeTimestamp?: string
+): Promise<AuditFeedPage> {
+  const result = await getComputerAuditFeedFn({ tenantId, limit, beforeTimestamp })
+  return result.data as AuditFeedPage
+}
+
+// ── Phase 5.6: Download with Approval ─────────────────────────────────────────
+
+export interface DownloadResult {
+  success: boolean
+  fileName: string
+  fileType: string
+  downloadedAt?: string
+  auditEventId?: string
+  error?: string
+  notImplemented?: boolean
+}
+
+export async function downloadGeneratedFileWithApproval(input: {
+  tenantId: string
+  planId: string
+  stepIndex: number
+  fileName: string
+  fileType: string
+  fileSizeBytes?: number
+  sourceDescription: string
+  approvalRequestId: string
+}): Promise<DownloadResult> {
+  const result = await downloadGeneratedFileWithApprovalFn(input)
+  return result.data as DownloadResult
 }

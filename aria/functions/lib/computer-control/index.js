@@ -14,7 +14,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_COMPUTER_CONTROL_CONFIG = exports.NativeOSProvider = exports.TauriProvider = exports.ElectronProvider = exports.DesktopAgentProvider = exports.BrowserExtensionProvider = exports.WebPWAProvider = exports.ComputerEvents = exports.ComputerActionExecutor = exports.ComputerActionPlanner = exports.ComputerSessionManager = exports.ComputerLogger = exports.ComputerAudit = exports.ComputerPolicyEngine = exports.ComputerApprovalBridge = exports.ComputerPermissions = exports.ComputerSafetyError = exports.ComputerSafetyGuard = exports.ComputerCapabilityRegistry = exports.BrowserBridge = exports.LocalBridge = exports.DesktopAgent = exports.BrowserAgent = exports.ComputerAgent = exports.ComputerControlEngine = void 0;
+exports.ComputerFilePickerPlan = exports.ComputerExecutionValidator = exports.ComputerAuditStream = exports.ComputerDownloadManager = exports.ComputerDocumentBridge = exports.ComputerExecutionPipeline = exports.DEFAULT_COMPUTER_CONTROL_CONFIG = exports.ElectronDesktopProvider = exports.NativeOSProvider = exports.TauriProvider = exports.ElectronProvider = exports.DesktopAgentProvider = exports.BrowserExtensionProvider = exports.WebPWAProvider = exports.ComputerEvents = exports.ComputerActionExecutor = exports.ComputerActionPlanner = exports.ComputerSessionManager = exports.ComputerLogger = exports.ComputerAudit = exports.ComputerPolicyEngine = exports.ComputerApprovalBridge = exports.ComputerPermissions = exports.ComputerSafetyError = exports.ComputerSafetyGuard = exports.ComputerCapabilityRegistry = exports.BrowserBridge = exports.LocalBridge = exports.DesktopAgent = exports.BrowserAgent = exports.ComputerAgent = exports.ComputerControlEngine = void 0;
 exports.getComputerControlEngine = getComputerControlEngine;
 const ComputerControlEngine_1 = require("./ComputerControlEngine");
 const ComputerConfig_1 = require("./ComputerConfig");
@@ -84,7 +84,22 @@ Object.defineProperty(exports, "DesktopAgentProvider", { enumerable: true, get: 
 Object.defineProperty(exports, "ElectronProvider", { enumerable: true, get: function () { return ComputerProvider_1.ElectronProvider; } });
 Object.defineProperty(exports, "TauriProvider", { enumerable: true, get: function () { return ComputerProvider_1.TauriProvider; } });
 Object.defineProperty(exports, "NativeOSProvider", { enumerable: true, get: function () { return ComputerProvider_1.NativeOSProvider; } });
+Object.defineProperty(exports, "ElectronDesktopProvider", { enumerable: true, get: function () { return ComputerProvider_1.ElectronDesktopProvider; } });
 var ComputerConfig_2 = require("./ComputerConfig");
 Object.defineProperty(exports, "DEFAULT_COMPUTER_CONTROL_CONFIG", { enumerable: true, get: function () { return ComputerConfig_2.DEFAULT_COMPUTER_CONTROL_CONFIG; } });
 __exportStar(require("./ComputerTypes"), exports);
+// Phase 5.6
+var ComputerExecutionPipeline_1 = require("./ComputerExecutionPipeline");
+Object.defineProperty(exports, "ComputerExecutionPipeline", { enumerable: true, get: function () { return ComputerExecutionPipeline_1.ComputerExecutionPipeline; } });
+var ComputerDocumentBridge_1 = require("./ComputerDocumentBridge");
+Object.defineProperty(exports, "ComputerDocumentBridge", { enumerable: true, get: function () { return ComputerDocumentBridge_1.ComputerDocumentBridge; } });
+var ComputerDownloadManager_1 = require("./ComputerDownloadManager");
+Object.defineProperty(exports, "ComputerDownloadManager", { enumerable: true, get: function () { return ComputerDownloadManager_1.ComputerDownloadManager; } });
+var ComputerAuditStream_1 = require("./ComputerAuditStream");
+Object.defineProperty(exports, "ComputerAuditStream", { enumerable: true, get: function () { return ComputerAuditStream_1.ComputerAuditStream; } });
+var ComputerExecutionValidator_1 = require("./ComputerExecutionValidator");
+Object.defineProperty(exports, "ComputerExecutionValidator", { enumerable: true, get: function () { return ComputerExecutionValidator_1.ComputerExecutionValidator; } });
+var ComputerFilePickerPlan_1 = require("./ComputerFilePickerPlan");
+Object.defineProperty(exports, "ComputerFilePickerPlan", { enumerable: true, get: function () { return ComputerFilePickerPlan_1.ComputerFilePickerPlan; } });
+__exportStar(require("./ComputerExecutionTypes"), exports);
 //# sourceMappingURL=index.js.map

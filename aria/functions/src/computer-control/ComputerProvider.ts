@@ -33,9 +33,19 @@ export interface ComputerProvider {
 
 /**
  * Web PWA Provider — the ONLY semi-functional provider.
- * Operates within what a web app can legitimately do via browser APIs
- * (conceptually: openUrl, copyToClipboard, uploadFileWithUserPicker).
+ * Operates within what a web app can legitimately do via browser APIs.
  * All operations require user gesture; none are silent.
+ *
+ * Phase 5.6 additions:
+ * - openUrl: opens a URL (browser-side window.open)
+ * - copyToClipboard: writes text to clipboard (user-visible confirmation required in UI)
+ * - uploadFileWithUserPicker: opens browser <input type="file"> — user controls selection
+ * - downloadFileWithUserApproval: approval-gated download (audit-only at server side;
+ *   actual file transfer happens browser-side after approval is verified)
+ * - summarizeVisiblePage: PLACEHOLDER — returns structured not-implemented; real
+ *   summarization requires AI Gateway integration (Phase 5.7)
+ * - screenshotWithApproval: PLACEHOLDER — requires approval; actual screen capture
+ *   is not possible from a server-side Cloud Function; browser extension needed
  */
 export class WebPWAProvider implements ComputerProvider {
   readonly capabilities: ComputerProviderCapabilities = {
@@ -48,6 +58,8 @@ export class WebPWAProvider implements ComputerProvider {
       'searchWeb',
       'copyToClipboard',
       'uploadFileWithUserPicker',
+      'downloadFileWithUserApproval',
+      'screenshotWithApproval',
     ],
   }
 
@@ -66,15 +78,69 @@ export class WebPWAProvider implements ComputerProvider {
       }
       case 'copyToClipboard': {
         const text = typeof parameters.text === 'string' ? parameters.text : ''
-        // In a real web context this would call navigator.clipboard.writeText
-        return { success: true, capabilityId, output: { action: 'clipboard_write', length: text.length } }
+        // In a real web context this would call navigator.clipboard.writeText.
+        // The UI MUST show a confirmation to the user before calling this.
+        return {
+          success: true,
+          capabilityId,
+          output: {
+            action: 'clipboard_write',
+            length: text.length,
+            note: 'User-visible confirmation required in UI before calling clipboard write.',
+          },
+        }
       }
       case 'readVisiblePage':
-      case 'summarizeVisiblePage':
         // Page content reading is handled by Document Intelligence integration
-        return { success: true, capabilityId, output: { action: 'read_page', note: 'Page content forwarded to Document Intelligence.' } }
+        return {
+          success: true,
+          capabilityId,
+          output: { action: 'read_page', note: 'Page content forwarded to Document Intelligence.' },
+        }
+      case 'summarizeVisiblePage':
+        // PLACEHOLDER — real summarization requires AI Gateway + page content from browser.
+        // Phase 5.7 will integrate ComputerDocumentBridge with the AI Gateway for this.
+        return {
+          success: false,
+          capabilityId,
+          notImplemented: true,
+          error: 'summarizeVisiblePage requires AI Gateway integration (Phase 5.7). ' +
+            'Use analyzeSelectedDocument Cloud Function for file-based summarization.',
+        }
       case 'uploadFileWithUserPicker':
-        return { success: true, capabilityId, output: { action: 'file_picker_opened', note: 'Browser file picker opened — user controls file selection.' } }
+        // Browser <input type="file"> — user controls file selection entirely.
+        return {
+          success: true,
+          capabilityId,
+          output: {
+            action: 'file_picker_opened',
+            note: 'Browser file picker opened — user controls file selection. No silent file access.',
+          },
+        }
+      case 'downloadFileWithUserApproval':
+        // Approval-gated download. The actual file transfer is browser-side;
+        // server-side we only verify approval and audit. This is NOT a real download
+        // from a server — the Cloud Function handles approval + audit only.
+        return {
+          success: true,
+          capabilityId,
+          output: {
+            action: 'download_approved',
+            note: 'Download approval verified. Actual file transfer must be triggered browser-side. ' +
+              'Server-side download is NOT implemented in the web-pwa provider.',
+            notImplemented: true,
+          },
+        }
+      case 'screenshotWithApproval':
+        // PLACEHOLDER — actual screen capture is not possible from a Cloud Function.
+        // Requires a browser extension or desktop agent (Phase 5.7+).
+        return {
+          success: false,
+          capabilityId,
+          notImplemented: true,
+          error: 'screenshotWithApproval requires a browser extension or desktop agent. ' +
+            'This capability is a PLACEHOLDER in the web-pwa provider — no screen capture occurs.',
+        }
       default:
         return {
           success: false,
@@ -82,6 +148,41 @@ export class WebPWAProvider implements ComputerProvider {
           error: `WebPWAProvider does not support capability "${capabilityId}".`,
           notImplemented: true,
         }
+    }
+  }
+}
+
+/**
+ * Electron Desktop Provider — PLACEHOLDER.
+ *
+ * IMPORTANT: This provider is NOT functional. No Electron app binary, installer,
+ * or desktop agent exists. ALL methods unconditionally return
+ * { success: false, notImplemented: true }. This class exists as an architecture
+ * placeholder for the future ARIA Desktop Agent (Phase 5.7+).
+ *
+ * Future plan:
+ * 1. Build an Electron (or Tauri) desktop app with a local HTTP server.
+ * 2. Implement mutual auth with public key challenge/response.
+ * 3. Capability grants controlled by ARIA server via LocalBridge.
+ * 4. All actions still routed through ComputerApprovalBridge.
+ * 5. No capability executes without being in the agent's capabilityGrant.
+ */
+export class ElectronDesktopProvider implements ComputerProvider {
+  readonly capabilities: ComputerProviderCapabilities = {
+    providerType: 'electron',
+    isPlaceholder: true,
+    supported: [],  // Empty — nothing is implemented
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async execute(capabilityId: ComputerCapabilityId, _parameters: Record<string, unknown>): Promise<ComputerActionResult> {
+    return {
+      success: false,
+      capabilityId,
+      notImplemented: true,
+      error: 'ElectronDesktopProvider is a PLACEHOLDER — no Electron app binary or installer exists. ' +
+        'This capability requires the future ARIA Desktop Agent (Phase 5.7+). ' +
+        'All methods unconditionally return { success: false, notImplemented: true }.',
     }
   }
 }

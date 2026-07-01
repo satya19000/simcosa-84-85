@@ -5,6 +5,7 @@ import type { ComputerApprovalBridge } from './ComputerApprovalBridge'
 import type { ComputerAudit } from './ComputerAudit'
 import type { ComputerProvider } from './ComputerProvider'
 import type { ComputerLogger } from './ComputerLogger'
+import type { ComputerExecutionValidator } from './ComputerExecutionValidator'
 
 /**
  * ComputerActionExecutor — the ONLY class that may invoke a provider.
@@ -21,6 +22,9 @@ import type { ComputerLogger } from './ComputerLogger'
  * executor.
  */
 export class ComputerActionExecutor {
+  /** Optional validator injected after construction (set by ComputerControlEngine in Phase 5.6). */
+  private validator?: ComputerExecutionValidator
+
   constructor(
     private readonly safetyGuard: ComputerSafetyGuard,
     private readonly permissions: ComputerPermissions,
@@ -29,6 +33,14 @@ export class ComputerActionExecutor {
     private readonly provider: ComputerProvider,
     private readonly logger: ComputerLogger
   ) {}
+
+  /**
+   * Inject the execution validator (Phase 5.6).
+   * Called by ComputerControlEngine after both executor and validator are constructed.
+   */
+  setValidator(validator: ComputerExecutionValidator): void {
+    this.validator = validator
+  }
 
   /**
    * Execute a single step of an approved action plan.
@@ -43,6 +55,20 @@ export class ComputerActionExecutor {
     step: ComputerActionStep,
     approvalRequestId?: string
   ): Promise<ComputerActionResult> {
+    // 0. Execution validator pre-check (Phase 5.6 addition — runs before all other gates)
+    if (this.validator) {
+      const validation = await this.validator.validate(userId, plan, step, approvalRequestId)
+      if (!validation.valid) {
+        const msg = `Pre-execution validation failed: ${validation.errors.join('; ')}`
+        await this.audit.record({
+          tenantId, userId, eventType: 'action.blocked',
+          capabilityId: step.capabilityId, planId: plan.planId, riskLevel: step.riskLevel,
+          metadata: { reason: msg, validationErrors: validation.errors },
+        })
+        return { success: false, capabilityId: step.capabilityId, error: msg }
+      }
+    }
+
     // 1. Safety guard — hard-block check (credentialAccess always blocked here)
     try {
       this.safetyGuard.assertSafe(step.capabilityId)

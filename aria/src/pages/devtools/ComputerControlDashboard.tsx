@@ -21,6 +21,7 @@ import ComputerApprovalPanel from '../../components/computer-control/ComputerApp
 import LocalAgentList from '../../components/computer-control/LocalAgentList'
 import BrowserExtensionList from '../../components/computer-control/BrowserExtensionList'
 import SafetyWarning from '../../components/computer-control/SafetyWarning'
+import LiveComputerAuditFeed from '../../components/computer-control/LiveComputerAuditFeed'
 
 export default function ComputerControlDashboard() {
   const [tenants, setTenants] = useState<TenantRecord[]>([])
@@ -343,6 +344,12 @@ export default function ComputerControlDashboard() {
                 <BrowserExtensionList extensions={extensions} onRevoke={handleRevokeExtension} busy={busyExt} />
               </div>
             </>
+          )}
+          {selectedTenantId && (
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-white mb-3">Live Audit Feed</h2>
+              <LiveComputerAuditFeed tenantId={selectedTenantId} />
+            </div>
           )}
         </>
       )}

@@ -231,6 +231,18 @@ service cloud.firestore {
       match /computerPolicies/{policyId} {
         allow read, write: if false; // Cloud Functions only — computer control policies
       }
+
+      // ── Computer Control (Phase 5.6) document bridge + generated files ──
+      // Conservative deny-by-default — same rationale as all prior
+      // computer control collections. Analysis results and generated file
+      // metadata are written exclusively by Cloud Functions (Admin SDK)
+      // via ComputerDocumentBridge. No raw file content is persisted.
+      match /computerDocuments/{documentId} {
+        allow read, write: if false; // Cloud Functions only — document bridge analysis records
+      }
+      match /computerGeneratedFiles/{fileId} {
+        allow read, write: if false; // Cloud Functions only — generated file/report records
+      }
     }
 
     // ── Marketplace catalog (Phase 5.3) — public read, CF-write-only ──

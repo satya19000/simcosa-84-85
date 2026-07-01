@@ -25,12 +25,32 @@ class ComputerActionExecutor {
         this.logger = logger;
     }
     /**
+     * Inject the execution validator (Phase 5.6).
+     * Called by ComputerControlEngine after both executor and validator are constructed.
+     */
+    setValidator(validator) {
+        this.validator = validator;
+    }
+    /**
      * Execute a single step of an approved action plan.
      * The plan must be in 'approved' status before calling this method.
      * For steps requiring approval, the approvalRequestId must already be
      * in 'approved' status via the real ApprovalEngine.
      */
     async executeStep(tenantId, userId, plan, step, approvalRequestId) {
+        // 0. Execution validator pre-check (Phase 5.6 addition — runs before all other gates)
+        if (this.validator) {
+            const validation = await this.validator.validate(userId, plan, step, approvalRequestId);
+            if (!validation.valid) {
+                const msg = `Pre-execution validation failed: ${validation.errors.join('; ')}`;
+                await this.audit.record({
+                    tenantId, userId, eventType: 'action.blocked',
+                    capabilityId: step.capabilityId, planId: plan.planId, riskLevel: step.riskLevel,
+                    metadata: { reason: msg, validationErrors: validation.errors },
+                });
+                return { success: false, capabilityId: step.capabilityId, error: msg };
+            }
+        }
         // 1. Safety guard — hard-block check (credentialAccess always blocked here)
         try {
             this.safetyGuard.assertSafe(step.capabilityId);

@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logComputerActionResult = exports.listBrowserExtensions = exports.revokeBrowserExtension = exports.registerBrowserExtension = exports.listLocalAgents = exports.revokeLocalAgent = exports.registerLocalAgent = exports.requestComputerApproval = exports.planComputerAction = exports.listComputerCapabilities = void 0;
+exports.logComputerActionResult = exports.downloadGeneratedFileWithApproval = exports.getComputerAuditFeed = exports.generateComputerActionSummary = exports.analyzeSelectedDocument = exports.executeApprovedComputerAction = exports.listBrowserExtensions = exports.revokeBrowserExtension = exports.registerBrowserExtension = exports.listLocalAgents = exports.revokeLocalAgent = exports.registerLocalAgent = exports.requestComputerApproval = exports.planComputerAction = exports.listComputerCapabilities = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const computer_control_1 = require("./computer-control");
@@ -141,6 +141,128 @@ exports.listBrowserExtensions = (0, https_1.onCall)(SHARED_OPTS, async (request)
         throw new https_1.HttpsError('invalid-argument', 'tenantId required');
     const engine = (0, computer_control_1.getComputerControlEngine)(uid, db(), apiKey());
     return wrapError(() => engine.listBrowserExtensions(tenantId, uid));
+});
+// ── Audit / logging ────────────────────────────────────────────────────────
+// ── Phase 5.6: Execute Approved Action ────────────────────────────────────────
+/**
+ * executeApprovedComputerAction — execute a pre-approved single action step.
+ * Validates the approval record via ComputerExecutionValidator before calling
+ * the provider through the full pipeline (safety → approval → provider).
+ * Requires auth + tenant membership.
+ */
+exports.executeApprovedComputerAction = (0, https_1.onCall)(SHARED_OPTS, async (request) => {
+    const uid = requireAuth(request);
+    const { tenantId, plan, step, approvalRequestId, documentContext } = request.data;
+    if (!tenantId?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'tenantId required');
+    if (!plan?.planId)
+        throw new https_1.HttpsError('invalid-argument', 'plan with planId required');
+    if (!step?.capabilityId)
+        throw new https_1.HttpsError('invalid-argument', 'step with capabilityId required');
+    const engine = (0, computer_control_1.getComputerControlEngine)(uid, db(), apiKey());
+    return wrapError(() => engine.executePipelineStep(tenantId, uid, {
+        tenantId,
+        userId: uid,
+        plan,
+        step,
+        approvalRequestId,
+        documentContext: documentContext,
+    }));
+});
+// ── Phase 5.6: Analyze Selected Document ──────────────────────────────────────
+/**
+ * analyzeSelectedDocument — user sends file content (already picked via browser
+ * file picker); routes through ComputerDocumentBridge → AI Gateway for summary
+ * and action items. Requires auth + tenant membership.
+ *
+ * SAFETY: File content is base64-encoded by the front-end from a user-selected
+ * file via <input type="file">. No server-side file system access occurs.
+ * File content is NOT persisted — only metadata and analysis results are stored.
+ */
+exports.analyzeSelectedDocument = (0, https_1.onCall)({ ...SHARED_OPTS, timeoutSeconds: 60 }, async (request) => {
+    const uid = requireAuth(request);
+    const { tenantId, fileName, fileType, fileContentBase64, fileSizeBytes } = request.data;
+    if (!tenantId?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'tenantId required');
+    if (!fileName?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'fileName required');
+    if (!fileType?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'fileType required');
+    if (!fileContentBase64?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'fileContentBase64 required');
+    if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0) {
+        throw new https_1.HttpsError('invalid-argument', 'fileSizeBytes must be a positive number');
+    }
+    const engine = (0, computer_control_1.getComputerControlEngine)(uid, db(), apiKey());
+    return wrapError(() => engine.analyzeDocument(tenantId, uid, {
+        fileName,
+        fileType,
+        fileContentBase64,
+        fileSizeBytes,
+        // AI summary: Phase 5.7 will integrate the full AI Gateway pipeline here.
+        // For now, structural analysis only.
+        aiSummary: undefined,
+        aiActionItems: undefined,
+    }));
+});
+// ── Phase 5.6: Generate Computer Action Summary ────────────────────────────────
+/**
+ * generateComputerActionSummary — returns a human-readable summary of a
+ * proposed action plan. Requires auth.
+ * Phase 5.7 will route this through AI Gateway for a natural-language summary.
+ */
+exports.generateComputerActionSummary = (0, https_1.onCall)(SHARED_OPTS, async (request) => {
+    requireAuth(request);
+    const { plan } = request.data;
+    if (!plan?.planId)
+        throw new https_1.HttpsError('invalid-argument', 'plan with planId required');
+    // Structural summary without AI Gateway (Phase 5.7 will add LLM-based summary)
+    const stepSummaries = (plan.steps ?? []).map((s, i) => `Step ${i + 1}: ${s.description} [${s.capabilityId}, risk: ${s.riskLevel}]`);
+    return {
+        planId: plan.planId,
+        intent: plan.intent,
+        summary: `Plan "${plan.intent}" has ${plan.steps?.length ?? 0} step(s): ${stepSummaries.join(' → ')}`,
+        stepCount: plan.steps?.length ?? 0,
+        aiGatewayUsed: false, // Phase 5.7 will set this to true
+        _note: 'Full AI Gateway summarization is deferred to Phase 5.7.',
+    };
+});
+// ── Phase 5.6: Get Computer Audit Feed ────────────────────────────────────────
+/**
+ * getComputerAuditFeed — returns paginated audit events from
+ * tenants/{tenantId}/computerAudit ordered by timestamp desc.
+ * Requires auth + tenant membership.
+ */
+exports.getComputerAuditFeed = (0, https_1.onCall)(SHARED_OPTS, async (request) => {
+    const uid = requireAuth(request);
+    const { tenantId, limit, beforeTimestamp } = request.data;
+    if (!tenantId?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'tenantId required');
+    const engine = (0, computer_control_1.getComputerControlEngine)(uid, db(), apiKey());
+    return wrapError(() => engine.getAuditFeed(tenantId, uid, limit ?? 25, beforeTimestamp));
+});
+// ── Phase 5.6: Download Generated File with Approval ─────────────────────────
+/**
+ * downloadGeneratedFileWithApproval — triggers ComputerDownloadManager with
+ * an existing approval record. Requires auth + tenant membership.
+ *
+ * The approval record must already exist and be in 'approved' status.
+ * The actual file transfer happens browser-side; this function verifies
+ * approval and records the audit event.
+ */
+exports.downloadGeneratedFileWithApproval = (0, https_1.onCall)(SHARED_OPTS, async (request) => {
+    const uid = requireAuth(request);
+    const input = request.data;
+    if (!input.tenantId?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'tenantId required');
+    if (!input.approvalRequestId?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'approvalRequestId required');
+    if (!input.fileName?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'fileName required');
+    if (!input.fileType?.trim())
+        throw new https_1.HttpsError('invalid-argument', 'fileType required');
+    const engine = (0, computer_control_1.getComputerControlEngine)(uid, db(), apiKey());
+    return wrapError(() => engine.downloadWithApproval(input.tenantId, uid, { ...input, userId: uid }));
 });
 // ── Audit / logging ────────────────────────────────────────────────────────
 exports.logComputerActionResult = (0, https_1.onCall)(SHARED_OPTS, async (request) => {

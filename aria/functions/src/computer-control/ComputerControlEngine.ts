@@ -19,10 +19,18 @@ import { LocalBridge } from './LocalBridge'
 import { BrowserBridge } from './BrowserBridge'
 import { WebPWAProvider } from './ComputerProvider'
 import { DEFAULT_COMPUTER_CONTROL_CONFIG, type ComputerControlConfig } from './ComputerConfig'
+// Phase 5.6 additions
+import { ComputerExecutionPipeline } from './ComputerExecutionPipeline'
+import { ComputerDocumentBridge } from './ComputerDocumentBridge'
+import { ComputerDownloadManager } from './ComputerDownloadManager'
+import { ComputerAuditStream } from './ComputerAuditStream'
+import { ComputerExecutionValidator } from './ComputerExecutionValidator'
+import { ComputerFilePickerPlan } from './ComputerFilePickerPlan'
 import type {
   ComputerActionPlan, ComputerApprovalInput, LocalAgentRegistration,
   BrowserExtensionRegistration, ComputerCapabilityId,
 } from './ComputerTypes'
+import type { PipelineExecuteInput, DownloadApprovalInput, AuditFeedPage, FilePickerPlanOptions } from './ComputerExecutionTypes'
 
 /**
  * ComputerControlEngine — top-level facade for the Computer Control Foundation.
@@ -48,6 +56,13 @@ export class ComputerControlEngine {
   readonly desktopAgent: DesktopAgent
   readonly localBridge: LocalBridge
   readonly browserBridge: BrowserBridge
+  // Phase 5.6 sub-modules
+  readonly executionPipeline: ComputerExecutionPipeline
+  readonly documentBridge: ComputerDocumentBridge
+  readonly downloadManager: ComputerDownloadManager
+  readonly auditStream: ComputerAuditStream
+  readonly executionValidator: ComputerExecutionValidator
+  readonly filePickerPlan: ComputerFilePickerPlan
   private readonly logger: ComputerLogger
 
   constructor(
@@ -82,6 +97,22 @@ export class ComputerControlEngine {
     this.desktopAgent = new DesktopAgent(this.agent)
     this.localBridge = new LocalBridge(db, this.tenants, this.audit)
     this.browserBridge = new BrowserBridge(db, this.tenants, this.audit)
+
+    // Phase 5.6: compose sub-modules
+    this.documentBridge = new ComputerDocumentBridge(db)
+    this.downloadManager = new ComputerDownloadManager(this.approvalBridge, this.audit)
+    this.auditStream = new ComputerAuditStream(db)
+    this.executionValidator = new ComputerExecutionValidator(this.approvalBridge, this.capabilityRegistry)
+    this.filePickerPlan = new ComputerFilePickerPlan(planner)
+    this.executionPipeline = new ComputerExecutionPipeline(
+      this.safetyGuard,
+      this.approvalBridge,
+      executor,
+      this.audit,
+      this.executionValidator
+    )
+    // Wire validator into executor as additional pre-execution gate
+    executor.setValidator(this.executionValidator)
   }
 
   // ── Capability listing ─────────────────────────────────────────────────────
@@ -159,5 +190,51 @@ export class ComputerControlEngine {
   async listAuditEvents(tenantId: string, userId: string, limit = 50) {
     await this.tenants.requireIdentity(tenantId, userId)
     return this.audit.listRecent(tenantId, limit)
+  }
+
+  // ── Phase 5.6: Execution Pipeline ─────────────────────────────────────────
+
+  async executePipelineStep(tenantId: string, userId: string, input: PipelineExecuteInput) {
+    await this.tenants.requireIdentity(tenantId, userId)
+    return this.executionPipeline.execute(input)
+  }
+
+  // ── Phase 5.6: Document Bridge ─────────────────────────────────────────────
+
+  async analyzeDocument(tenantId: string, userId: string, req: {
+    fileName: string
+    fileType: string
+    fileContentBase64: string
+    fileSizeBytes: number
+    aiSummary?: string
+    aiActionItems?: import('./ComputerExecutionTypes').ExtractedActionItem[]
+  }) {
+    await this.tenants.requireIdentity(tenantId, userId)
+    return this.documentBridge.handoffToDocumentIntelligence(
+      { tenantId, userId, ...req },
+      req.aiSummary,
+      req.aiActionItems
+    )
+  }
+
+  // ── Phase 5.6: Download Manager ────────────────────────────────────────────
+
+  async downloadWithApproval(tenantId: string, userId: string, input: DownloadApprovalInput) {
+    await this.tenants.requireIdentity(tenantId, userId)
+    return this.downloadManager.downloadFileWithUserApproval(input)
+  }
+
+  // ── Phase 5.6: Audit Feed ──────────────────────────────────────────────────
+
+  async getAuditFeed(tenantId: string, userId: string, limit = 25, beforeTimestamp?: string): Promise<AuditFeedPage> {
+    await this.tenants.requireIdentity(tenantId, userId)
+    return this.auditStream.getPage(tenantId, limit, beforeTimestamp)
+  }
+
+  // ── Phase 5.6: File Picker Plan ────────────────────────────────────────────
+
+  async planFilePicker(tenantId: string, userId: string, options: Omit<FilePickerPlanOptions, 'userId' | 'tenantId'>) {
+    await this.tenants.requireIdentity(tenantId, userId)
+    return this.filePickerPlan.generatePlan({ tenantId, userId, ...options })
   }
 }

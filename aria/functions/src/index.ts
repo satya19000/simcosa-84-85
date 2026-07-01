@@ -302,4 +302,10 @@ export {
   revokeBrowserExtension,
   listBrowserExtensions,
   logComputerActionResult,
+  // Phase 5.6
+  executeApprovedComputerAction,
+  analyzeSelectedDocument,
+  generateComputerActionSummary,
+  getComputerAuditFeed,
+  downloadGeneratedFileWithApproval,
 } from './computerControlApi'

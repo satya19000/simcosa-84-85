@@ -18,6 +18,13 @@ const LocalBridge_1 = require("./LocalBridge");
 const BrowserBridge_1 = require("./BrowserBridge");
 const ComputerProvider_1 = require("./ComputerProvider");
 const ComputerConfig_1 = require("./ComputerConfig");
+// Phase 5.6 additions
+const ComputerExecutionPipeline_1 = require("./ComputerExecutionPipeline");
+const ComputerDocumentBridge_1 = require("./ComputerDocumentBridge");
+const ComputerDownloadManager_1 = require("./ComputerDownloadManager");
+const ComputerAuditStream_1 = require("./ComputerAuditStream");
+const ComputerExecutionValidator_1 = require("./ComputerExecutionValidator");
+const ComputerFilePickerPlan_1 = require("./ComputerFilePickerPlan");
 /**
  * ComputerControlEngine — top-level facade for the Computer Control Foundation.
  *
@@ -51,6 +58,15 @@ class ComputerControlEngine {
         this.desktopAgent = new DesktopAgent_1.DesktopAgent(this.agent);
         this.localBridge = new LocalBridge_1.LocalBridge(db, this.tenants, this.audit);
         this.browserBridge = new BrowserBridge_1.BrowserBridge(db, this.tenants, this.audit);
+        // Phase 5.6: compose sub-modules
+        this.documentBridge = new ComputerDocumentBridge_1.ComputerDocumentBridge(db);
+        this.downloadManager = new ComputerDownloadManager_1.ComputerDownloadManager(this.approvalBridge, this.audit);
+        this.auditStream = new ComputerAuditStream_1.ComputerAuditStream(db);
+        this.executionValidator = new ComputerExecutionValidator_1.ComputerExecutionValidator(this.approvalBridge, this.capabilityRegistry);
+        this.filePickerPlan = new ComputerFilePickerPlan_1.ComputerFilePickerPlan(planner);
+        this.executionPipeline = new ComputerExecutionPipeline_1.ComputerExecutionPipeline(this.safetyGuard, this.approvalBridge, executor, this.audit, this.executionValidator);
+        // Wire validator into executor as additional pre-execution gate
+        executor.setValidator(this.executionValidator);
     }
     // ── Capability listing ─────────────────────────────────────────────────────
     listCapabilities() {
@@ -99,6 +115,31 @@ class ComputerControlEngine {
     async listAuditEvents(tenantId, userId, limit = 50) {
         await this.tenants.requireIdentity(tenantId, userId);
         return this.audit.listRecent(tenantId, limit);
+    }
+    // ── Phase 5.6: Execution Pipeline ─────────────────────────────────────────
+    async executePipelineStep(tenantId, userId, input) {
+        await this.tenants.requireIdentity(tenantId, userId);
+        return this.executionPipeline.execute(input);
+    }
+    // ── Phase 5.6: Document Bridge ─────────────────────────────────────────────
+    async analyzeDocument(tenantId, userId, req) {
+        await this.tenants.requireIdentity(tenantId, userId);
+        return this.documentBridge.handoffToDocumentIntelligence({ tenantId, userId, ...req }, req.aiSummary, req.aiActionItems);
+    }
+    // ── Phase 5.6: Download Manager ────────────────────────────────────────────
+    async downloadWithApproval(tenantId, userId, input) {
+        await this.tenants.requireIdentity(tenantId, userId);
+        return this.downloadManager.downloadFileWithUserApproval(input);
+    }
+    // ── Phase 5.6: Audit Feed ──────────────────────────────────────────────────
+    async getAuditFeed(tenantId, userId, limit = 25, beforeTimestamp) {
+        await this.tenants.requireIdentity(tenantId, userId);
+        return this.auditStream.getPage(tenantId, limit, beforeTimestamp);
+    }
+    // ── Phase 5.6: File Picker Plan ────────────────────────────────────────────
+    async planFilePicker(tenantId, userId, options) {
+        await this.tenants.requireIdentity(tenantId, userId);
+        return this.filePickerPlan.generatePlan({ tenantId, userId, ...options });
     }
 }
 exports.ComputerControlEngine = ComputerControlEngine;
