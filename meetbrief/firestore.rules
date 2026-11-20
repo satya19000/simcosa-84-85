@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isMember(meetingId) {
+      return signedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.memberIds;
+    }
+
+    // Users manage only their own settings.
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /meetings/{meetingId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.status in ['draft', 'recording', 'uploading']
+        && request.resource.data.title is string && request.resource.data.title.size() > 0;
+      // Clients edit meeting details and recording state; processing fields are server-only.
+      allow update: if signedIn() && request.auth.uid in resource.data.memberIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+             'title', 'date', 'startTime', 'timezone', 'venue', 'platform', 'chairperson', 'participants',
+             'agenda', 'department', 'reportLanguage', 'spokenLanguage', 'templateId', 'source', 'status',
+             'consent', 'speakerNames', 'updatedAt'])
+        && (!('status' in request.resource.data.diff(resource.data).affectedKeys())
+            || request.resource.data.status in ['draft', 'recording', 'uploading']);
+      allow delete: if false; // via API so audio and tasks are removed too
+
+      match /segments/{segmentId} {
+        allow read, create, update: if isMember(meetingId);
+        allow delete: if false;
+      }
+      match /transcriptPages/{page} {
+        allow read: if isMember(meetingId);
+        // Members may correct the transcript text.
+        allow update: if isMember(meetingId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['utterances']);
+      }
+      match /reports/{reportId} {
+        allow read: if isMember(meetingId);
+        allow update: if isMember(meetingId)
+          && request.resource.data.provider == resource.data.provider
+          && request.resource.data.generatedAt == resource.data.generatedAt;
+      }
+      match /qa/{id} { allow read: if isMember(meetingId); }
+      match /files/{id} { allow read: if isMember(meetingId); }
+    }
+
+    match /tasks/{taskId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid
+        && request.auth.uid in request.resource.data.memberIds
+        && isMember(request.resource.data.meetingId);
+      allow update: if signedIn() && request.auth.uid in resource.data.memberIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+             'status', 'title', 'assignee', 'assigneeDesignation', 'dueDate', 'dueText', 'priority', 'updatedAt', 'userEdited']);
+      allow delete: if signedIn() && request.auth.uid == resource.data.ownerId;
+    }
+
+    // Processing jobs are backend-only.
+    match /jobs/{document=**} { allow read, write: if false; }
+  }
+}

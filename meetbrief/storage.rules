@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isMember(meetingId) {
+      return request.auth != null &&
+        request.auth.uid in firestore.get(/databases/(default)/documents/meetings/$(meetingId)).data.memberIds;
+    }
+    function isMedia() {
+      return request.resource.contentType.matches('audio/.*') || request.resource.contentType.matches('video/.*')
+        || request.resource.contentType == 'application/octet-stream';
+    }
+
+    match /meetings/{meetingId}/{allPaths=**} {
+      allow read: if isMember(meetingId);
+    }
+    // Recorded chunks: deterministic names, so a retried upload overwrites rather than duplicates.
+    match /meetings/{meetingId}/segments/{segment}/{chunk} {
+      allow write: if isMember(meetingId) && isMedia() && request.resource.size < 50 * 1024 * 1024;
+    }
+    // Uploaded originals (audio or video), up to 2 GiB.
+    match /meetings/{meetingId}/original/{fileName} {
+      allow write: if isMember(meetingId) && isMedia() && request.resource.size < 2 * 1024 * 1024 * 1024;
+    }
+    // processed/ and exports/ are written by the backend only.
+  }
+}

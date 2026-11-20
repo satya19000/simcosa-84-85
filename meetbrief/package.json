@@ -1,0 +1,26 @@
+{
+  "name": "meetbrief",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MeetBrief AI — meeting recorder, transcripts and formal minutes (Telugu, English, mixed).",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w server && npm run build -w web",
+    "build:web": "npm run build -w shared && npm run build -w web",
+    "typecheck": "npm run build -w shared && npm run typecheck -w server && npm run typecheck -w web",
+    "test": "npm run build -w shared && npm run test -w shared && npm run test -w server",
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "emulators": "firebase emulators:start --only auth,firestore,storage --project demo-meetbrief"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "firebase-tools": "^14.27.0"
+  }
+}

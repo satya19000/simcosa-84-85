@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+!.env.emulators
+*.log
+.firebase
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+emulator-data
+test-results
+playwright-report
+
+# The repo root ignores lockfiles; MeetBrief needs its own for reproducible `npm ci`.
+!package-lock.json
